@@ -1,16 +1,31 @@
 defaults:
   - default
 
-# Stage 2: Char-level dil modeli — Aşama 1 tamamlanınca doldurulacak
+device:
+  prefer: cpu   # DirectML ~492ms/step (>0.5s eşiğinde), CPU ~61ms/step (8x hızlı)
+
 data:
   name: char_lm
+  block_size: 32
+  batch_size: 64
 
 model:
-  vocab_size: null   # tokenizer oluşturulunca belirlenecek
-  embedding_dim: 64
+  vocab_size: 460    # charset.json'dan okunacak, bu fallback
+  embed_dim: 128
   hidden_size: 256
-  num_steps: 10
+  beta: 0.9
+  num_steps: 32
 
 training:
-  epochs: 10
-  learning_rate: 0.001
+  epochs: 2
+  learning_rate: 0.01
+  optimizer: sgd
+  foreach: false
+  momentum: 0.9
+  max_steps_per_epoch: 2000   # null = tüm veri; test için 2000 kullan
+  checkpoint_dir: checkpoints
+  log_every: 100
+
+generation:
+  max_new_chars: 80
+  temperature: 1.0
