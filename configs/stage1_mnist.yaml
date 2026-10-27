@@ -1,7 +1,23 @@
-# Stage 1: SNN Verification on MNIST
-stage: 1
-dataset: "mnist"
-batch_size: 64
-num_epochs: 5
-learning_rate: 0.001
-time_steps: 25
+defaults:
+  - default
+
+data:
+  name: mnist
+  batch_size: 128
+  num_workers: 0  # Windows'ta 0 en güvenli
+
+model:
+  input_size: 784
+  hidden_size: 100
+  output_size: 10
+  beta: 0.9        # LIF decay oranı
+  num_steps: 25    # zaman adımı
+
+training:
+  epochs: 1
+  learning_rate: 0.001
+  optimizer: adam
+
+encoding:
+  type: poisson
+  max_rate: 1.0

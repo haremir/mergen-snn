@@ -1,9 +1,16 @@
-# Stage 2: Character-Level SNN Language Modeling
-stage: 2
-model_type: "spiking_rnn"
-sequence_length: 64
-hidden_dim: 256
-batch_size: 32
-num_epochs: 10
-learning_rate: 0.0005
-time_steps: 16
+defaults:
+  - default
+
+# Stage 2: Char-level dil modeli — Aşama 1 tamamlanınca doldurulacak
+data:
+  name: char_lm
+
+model:
+  vocab_size: null   # tokenizer oluşturulunca belirlenecek
+  embedding_dim: 64
+  hidden_size: 256
+  num_steps: 10
+
+training:
+  epochs: 10
+  learning_rate: 0.001

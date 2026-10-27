@@ -1,3 +1,14 @@
-# Default configuration for Mergen-SNN
-seed: 42
-device: "cpu"
+# Mergen-SNN temel yapılandırma
+project:
+  name: mergen-snn
+  seed: 42
+
+paths:
+  data_raw: data/raw
+  data_processed: data/processed
+  checkpoints: checkpoints
+  tokenizers: data/tokenizers
+
+logging:
+  level: INFO
+  save_dir: checkpoints/logs
