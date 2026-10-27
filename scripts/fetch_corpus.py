@@ -28,23 +28,49 @@ USER_AGENT = (
 # ==============================================================================
 
 LICENSE_NOTES = {
+    "architecture": "Computer Architecture reference textbooks and open ISA specifications (Patterson & Hennessy, RISC-V International).",
     "algorithms": "Open educational resources and open-access algorithmic textbooks (Jeff Erickson, AlgoXY, OpenDataStructures).",
     "theory": "Open textbooks in theoretical computer science and discrete mathematics (MIT OCW, HWS, StFX).",
     "systems": "Open systems textbooks and reference materials (Dive into Systems, Bottom Up CS, Gustavus OS).",
     "compilers": "Open compiler textbooks (Crafting Interpreters by Bob Nystrom, Basics of Compiler Design by Torben Mogensen).",
-    "databases": "Readings in Database Systems (The Red Book 5th ed.) and open database resources.",
+    "databases": "PostgreSQL Reference Documentation and Readings in Database Systems (The Red Book 5th ed.).",
     "networking": "Open Computer Networking principles and foundational IETF RFC standards (IETF / computer-networking.info).",
     "ai_ml": "Open deep learning and reinforcement learning books (Dive into Deep Learning - D2L, Sutton & Barto RL).",
     "papers_we_love": "Academic CS papers curated by the Papers We Love community, hosted for educational research.",
     "lecture_notes": "Open courseware and university lecture slides (CMU 15-213, MIT OCW).",
     "ostep": "Free to read online, © Remzi & Andrea Arpaci-Dusseau. Personal educational use only.",
     "python_docs": "Python Software Foundation License (PSF-2.0).",
-    "c_docs": "GNU Free Documentation License (GNU C Reference Manual).",
+    "c_docs": "ISO C Standards Draft (WG14) and GNU C Reference Manual.",
+    "cpp_docs": "ISO C++ Standards Draft (WG21 - Standard for Programming Language C++).",
     "cython_docs": "Apache-2.0 (Cython project).",
     "architecture_local": "Copyrighted textbooks (Patterson & Hennessy). Local copy provided by user for personal research.",
 }
 
+# Doğrudan İndirilecek Büyük Dosyalar (PDF / TXT)
 DIRECT_PDF_SOURCES = {
+    "architecture": [
+        # 1. Patterson & Hennessy 5. Baskı (Google Drive)
+        ("patterson_hennessy_cod_5th.pdf", "https://docs.google.com/uc?export=download&id=1OwVqBQkyjW4xvUvrVYyx3zMe5XkRHRlX"),
+        # 2. Patterson & Hennessy 6. Baskı (Archive.org)
+        ("patterson_hennessy_caa_6th.pdf", "https://archive.org/download/computerarchitectureaquantitativeapproach6thedition/Computer%20Architecture%3A%20A%20Quantitative%20Approach%206th%20Edition.pdf"),
+        # 3. Patterson & Hennessy 4. Baskı (GitHub raw)
+        ("patterson_hennessy_caa_4th.pdf", "https://github.com/lovisticsdev/engineering_books/raw/main/Computer%20Architecture/Hennessy%2C%20Patterson%20-%20Computer%20Architecture%20A%20Quantitative%20Approach%20%5B4th%20Edition%5D.pdf"),
+        # 4. Patterson & Hennessy RISC-V Edition (GitHub raw)
+        ("patterson_hennessy_cod_riscv.pdf", "https://github.com/kk-1024b/CS-textbooks/raw/main/Computer-Organization-and-Design-The-Hardware-Software-Interface-RISC-V-Edition.pdf"),
+        # Açık Erişim RISC-V Spesifikasyonları ve Mimarisi
+        ("riscv_unprivileged_spec.pdf", "https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf"),
+        ("riscv_privileged_spec.pdf", "https://github.com/riscv/riscv-isa-manual/releases/download/Priv-v1.12/riscv-privileged-20211203.pdf"),
+        ("xv6_riscv_architecture_book.pdf", "https://pdos.csail.mit.edu/6.828/2023/xv6/book-riscv-rev3.pdf"),
+    ],
+    "cpp_docs": [
+        ("cpp23_standard_draft_n4950.pdf", "https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/n4950.pdf"),
+    ],
+    "databases": [
+        ("postgresql_16_documentation.pdf", "https://www.postgresql.org/files/documentation/pdf/16/postgresql-16-A4.pdf"),
+    ],
+    "c_docs": [
+        ("c11_standard_n1570.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf"),
+    ],
     "algorithms": [
         ("algorithms_jeffe.pdf", "https://jeffe.cs.illinois.edu/teaching/algorithms/book/Algorithms-JeffE.pdf"),
         ("elementary_algorithms.pdf", "https://github.com/liuxinyu95/AlgoXY/releases/download/v0.618033/elementary-algorithms.pdf"),
@@ -58,8 +84,12 @@ DIRECT_PDF_SOURCES = {
     "systems": [
         ("os_book_max.pdf", "https://gustavus.edu/mcs/max/os-book/os-book.pdf"),
         ("dive_into_systems.pdf", "https://diveintosystems.org/book/pdf/DiveIntoSystems.pdf"),
+        ("progit_2nd_edition.pdf", "https://github.com/progit/progit2/releases/download/2.1.423/progit.pdf"),
+        ("gdb_debugging_manual.pdf", "https://sourceware.org/gdb/current/onlinedocs/gdb.pdf"),
     ],
     "compilers": [
+        ("gcc_manual.pdf", "https://gcc.gnu.org/onlinedocs/gcc.pdf"),
+        ("gcc_internals.pdf", "https://gcc.gnu.org/onlinedocs/gccint.pdf"),
         ("basics_compiler_design.pdf", "https://www.diku.dk/~torbenm/Basics/basics_lulu2.pdf"),
     ],
     "ai_ml": [
@@ -106,9 +136,6 @@ DIRECT_PDF_SOURCES = {
         ("rfc7230_http11.txt", "https://www.rfc-editor.org/rfc/rfc7230.txt"),
         ("rfc7231_http_semantics.txt", "https://www.rfc-editor.org/rfc/rfc7231.txt"),
         ("rfc4271_bgp.txt", "https://www.rfc-editor.org/rfc/rfc4271.txt"),
-    ],
-    "c_docs": [
-        ("c11_standard_n1570.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf"),
     ],
 }
 
@@ -206,18 +233,41 @@ def format_size(bytes_num: int) -> str:
         return f"{bytes_num / (1024 * 1024):.2f} MB"
 
 
-def download_file_stream(session: requests.Session, url: str, dest_path: Path, timeout: int = 60) -> bool:
-    """Büyük dosyaları chunk'lar halinde diske indirir."""
+def download_file_stream(session: requests.Session, url: str, dest_path: Path, timeout: int = 120) -> bool:
+    """Büyük dosyaları chunk'lar halinde diske indirir (Google Drive token desteğiyle)."""
     try:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        with session.get(url, stream=True, timeout=timeout) as resp:
-            if resp.status_code != 200:
-                logger.warning(f"HTTP {resp.status_code}: {url}")
-                return False
-            with open(dest_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
+        resp = session.get(url, stream=True, timeout=timeout)
+
+        # Google Drive büyük dosya onay sayfası kontrolü
+        if "google.com" in url:
+            confirm_token = None
+            for key, val in resp.cookies.items():
+                if key.startswith("download_warning"):
+                    confirm_token = val
+                    break
+            if confirm_token:
+                sep = "&" if "?" in url else "?"
+                confirm_url = f"{url}{sep}confirm={confirm_token}"
+                resp = session.get(confirm_url, stream=True, timeout=timeout)
+
+        if resp.status_code != 200:
+            logger.warning(f"HTTP {resp.status_code}: {url}")
+            return False
+
+        with open(dest_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+        # HTML hata sayfası dönüp dönmediğini kontrol et
+        if dest_path.stat().st_size < 1024:
+            with open(dest_path, "r", encoding="utf-8", errors="ignore") as f:
+                head = f.read(200).lower()
+                if "<html" in head or "404 not found" in head or "forbidden" in head:
+                    dest_path.unlink()
+                    return False
+
         return True
     except Exception as e:
         logger.warning(f"İndirme hatası ({url}): {e}")
@@ -304,7 +354,7 @@ def process_direct_files(session: requests.Session, skip_list: List[Dict], pdf_s
                 size_str = format_size(dest_file.stat().st_size)
                 print(f"[OK] {cat_name}/{filename} ({size_str}) [Önbellek]")
             else:
-                ok = download_file_stream(session, url, dest_file, timeout=90)
+                ok = download_file_stream(session, url, dest_file, timeout=120)
                 if not ok:
                     print(f"[SKIP] {cat_name}/{url} (İndirilemedi / Timeout / 404)")
                     skip_list.append({"category": cat_name, "url": url, "reason": "Download Failed / 404"})
@@ -319,9 +369,63 @@ def process_direct_files(session: requests.Session, skip_list: List[Dict], pdf_s
                     pdf_stats["success"] += 1
             elif ext == ".html":
                 extract_text_from_html(dest_file)
-            elif ext == ".txt":
-                # Zaten metin dosyası, txt olarak mevcuttur
-                pass
+
+
+def process_architecture_open_access(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict):
+    """Açık erişimli mimari kaynaklarını (IIT Delhi ve Rowan OER) dener."""
+    logger.info(">>> Açık Erişim Mimari Kaynakları (IIT Delhi & Rowan) Denetleniyor...")
+    arch_dir = BASE_DIR / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. IIT Delhi - Sarangi (Basic Computer Architecture)
+    iit_url = "https://www.cse.iitd.ernet.in/~srsarangi/archbook/"
+    try:
+        resp = session.get(iit_url, timeout=15)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.content, "lxml")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.lower().endswith(".pdf"):
+                    pdf_url = urljoin(iit_url, href)
+                    fname = os.path.basename(urlparse(pdf_url).path)
+                    fdest = arch_dir / f"sarangi_{fname}"
+                    if not fdest.exists():
+                        if download_file_stream(session, pdf_url, fdest, timeout=60):
+                            print(f"[OK] architecture/{fdest.name} ({format_size(fdest.stat().st_size)})")
+                            pdf_stats["total"] += 1
+                            if extract_text_from_pdf(fdest):
+                                pdf_stats["success"] += 1
+        else:
+            print(f"[SKIP] architecture/{iit_url} (HTTP {resp.status_code} Forbidden/Unavailable)")
+            skip_list.append({"category": "architecture", "url": iit_url, "reason": f"HTTP {resp.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] architecture/{iit_url} ({e})")
+        skip_list.append({"category": "architecture", "url": iit_url, "reason": str(e)})
+
+    # 2. Rowan OER - Computer Organization with ARM64 / MIPS
+    rowan_url = "https://rdw.rowan.edu/cgi/viewcontent.cgi?article=1008&context=oer"
+    fdest_rowan = arch_dir / "rowan_computer_organization.pdf"
+    if fdest_rowan.exists() and fdest_rowan.stat().st_size > 1024:
+        print(f"[OK] architecture/{fdest_rowan.name} ({format_size(fdest_rowan.stat().st_size)}) [Önbellek]")
+    else:
+        try:
+            resp = session.get(rowan_url, timeout=20, stream=True)
+            if resp.status_code == 200 and "application/pdf" in resp.headers.get("Content-Type", ""):
+                with open(fdest_rowan, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                print(f"[OK] architecture/{fdest_rowan.name} ({format_size(fdest_rowan.stat().st_size)})")
+                pdf_stats["total"] += 1
+                if extract_text_from_pdf(fdest_rowan):
+                    pdf_stats["success"] += 1
+            else:
+                reason = f"HTTP {resp.status_code} (Rowan Bot-Defense/Protected)"
+                print(f"[SKIP] architecture/{rowan_url} ({reason})")
+                skip_list.append({"category": "architecture", "url": rowan_url, "reason": reason})
+        except Exception as e:
+            print(f"[SKIP] architecture/{rowan_url} ({e})")
+            skip_list.append({"category": "architecture", "url": rowan_url, "reason": str(e)})
 
 
 def process_html_crawler(session: requests.Session, skip_list: List[Dict]):
@@ -440,7 +544,6 @@ def process_papers_we_love(skip_list: List[Dict], pdf_stats: Dict):
     cat_dir.mkdir(parents=True, exist_ok=True)
     write_license_note(cat_dir, "papers_we_love")
 
-    # Eğer zaten klasörler indirilmişse tekrar clone yapma
     existing_pdfs = list(cat_dir.rglob("*.pdf"))
     if len(existing_pdfs) >= 10:
         logger.info(f"Papers We Love önbellekte mevcut ({len(existing_pdfs)} PDF). Klonlama atlandı.")
@@ -529,7 +632,7 @@ def check_local_required():
 def main():
     start_time = time.time()
     logger.info("==========================================")
-    logger.info("Mergen-SNN — Genişletilmiş CS Korpus Hattı")
+    logger.info("Mergen-SNN — Bilgisayar Mimarisi & CS Korpus Hattı")
     logger.info("==========================================")
 
     session = requests.Session()
@@ -538,19 +641,22 @@ def main():
     skip_list: List[Dict] = []
     pdf_stats = {"total": 0, "success": 0}
 
-    # 1. Doğrudan Dosyalar (D2L, Sutton & Barto, Erickson, MCS, OSTEP, RFC'ler vb.)
+    # 1. Doğrudan Dosyalar (Patterson & Hennessy, C++, Postgres, D2L, Sutton & Barto vb.)
     process_direct_files(session, skip_list, pdf_stats)
 
-    # 2. HTML tabanlı kitaplar (Crafting Interpreters, BottomUpCS, RedBook, Python Docs vb.)
+    # 2. Açık Erişim Mimari Kitapları (IIT Delhi & Rowan)
+    process_architecture_open_access(session, skip_list, pdf_stats)
+
+    # 3. HTML tabanlı kitaplar (Crafting Interpreters, BottomUpCS, RedBook, Python Docs vb.)
     process_html_crawler(session, skip_list)
 
-    # 3. Ders notları ve slaytlar (CMU 15-213 vb.)
+    # 4. Ders notları ve slaytlar (CMU 15-213 vb.)
     process_lecture_notes(session, skip_list, pdf_stats)
 
-    # 4. Papers We Love makale arşivi
+    # 5. Papers We Love makale arşivi
     process_papers_we_love(skip_list, pdf_stats)
 
-    # 5. Yerel telifli kitap denetimi
+    # 6. Yerel telifli kitap denetimi
     check_local_required()
 
     # ==========================================================================
@@ -570,7 +676,6 @@ def main():
     for cat in categories:
         cat_dir = BASE_DIR / cat
         all_files = [f for f in cat_dir.rglob("*") if f.is_file()]
-        # Sadece saf içerik .txt dosyalarını topla (.txt uzantılı veya rfc .txt)
         txt_files = [f for f in all_files if f.suffix.lower() == ".txt" and f.name != "LICENSE_NOTE.txt"]
 
         cat_total_size = sum(f.stat().st_size for f in all_files)
@@ -591,8 +696,8 @@ def main():
     print(f"Toplam Çıkarılan .txt     : {total_txt_count}")
     print(f"Toplam Ham + TXT Boyutu   : {format_size(total_all_bytes)}")
     print(f"TOPLAM ÇIKARILAN METİN    : {format_size(total_txt_bytes)} ({total_txt_bytes / (1024 * 1024):.2f} MB)")
-    hedef_durumu = "[BASARILI - HEDEF ASILDI]" if total_txt_bytes >= 20 * 1024 * 1024 else "[20 MB ALTINDA]"
-    print(f"Hedef Kontrolü (>= 20 MB) : {hedef_durumu}")
+    hedef_durumu = "[BASARILI - HEDEF ASILDI]" if total_txt_bytes >= 50 * 1024 * 1024 else "[50 MB ALTINDA]"
+    print(f"Hedef Kontrolü (>= 50 MB) : {hedef_durumu}")
     print(f"Toplam Hata / SKIP        : {len(skip_list)}")
     if pdf_stats["total"] > 0:
         pct = (pdf_stats["success"] / pdf_stats["total"]) * 100
