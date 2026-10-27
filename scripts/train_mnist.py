@@ -95,7 +95,7 @@ def main():
     if optimizer_name == "adam":
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, foreach=foreach_opt)
     elif optimizer_name == "sgd":
-        optimizer = torch.optim.SGD(model.parameters(), lr=lr * 10, momentum=momentum_opt, foreach=foreach_opt)
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum_opt, foreach=foreach_opt)
     else:
         raise ValueError(f"Bilinmeyen optimizer: {optimizer_name}")
 

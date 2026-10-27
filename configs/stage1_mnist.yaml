@@ -16,7 +16,7 @@ model:
 training:
   epochs: 1
   learning_rate: 0.001
-  optimizer: adam        # adam | sgd
+  optimizer: sgd        # adam | sgd — MNIST: SGD ve Adam eşdeğer; SGD'de DirectML CPU fallback yok
   foreach: false         # DirectML: lerp CPU fallback'ini önler
   momentum: 0.9          # sadece sgd için
 
