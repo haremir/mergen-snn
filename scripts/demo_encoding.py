@@ -8,6 +8,7 @@ import yaml
 
 from mergen.data.encoding import poisson_encode
 from mergen.data.mnist_loader import get_mnist_loaders
+from mergen.utils.device import device_name, get_device
 from mergen.utils.logger import get_logger
 
 
@@ -43,6 +44,10 @@ def main():
 
     # 1. Config değerlerini oku
     cfg = load_config()
+    prefer_device = cfg.get("device", {}).get("prefer", "auto")
+    dev = get_device(prefer=prefer_device)
+    logger.info(f"Device: {device_name(dev)}")
+
     data_dir = cfg.get("paths", {}).get("data_raw", "data/raw")
     checkpoints_dir = cfg.get("paths", {}).get("checkpoints", "checkpoints")
     num_steps = cfg.get("model", {}).get("num_steps", 25)
@@ -55,7 +60,7 @@ def main():
     train_loader, _ = get_mnist_loaders(batch_size=batch_size, num_workers=0, data_dir=data_dir)
     images, labels = next(iter(train_loader))
 
-    # 3. Poisson spike kodlama uygula
+    # 3. Poisson spike kodlama uygula (CPU üzerinde devam eder)
     spikes = poisson_encode(images, num_steps=num_steps, max_rate=max_rate)
 
     # 4. Konsola metrikleri yaz

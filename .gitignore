@@ -17,6 +17,7 @@ eggs/
 
 # Virtual environments
 .venv/
+.venv-directml/
 venv/
 ENV/
 env/

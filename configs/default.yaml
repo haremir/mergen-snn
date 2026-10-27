@@ -3,6 +3,9 @@ project:
   name: mergen-snn
   seed: 42
 
+device:
+  prefer: auto   # auto | cpu | directml
+
 paths:
   data_raw: data/raw
   data_processed: data/processed

@@ -10,8 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
 dependencies = [
-    "torch",
-    "torchvision",
+    "torch==2.4.1",
+    "torchvision==0.19.1",
+    "torch-directml; sys_platform == 'win32'",
     "snntorch",
     "numpy",
     "pyyaml",
