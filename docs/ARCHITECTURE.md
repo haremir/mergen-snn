@@ -58,7 +58,36 @@ Rate Loss (Cross Entropy) & Rate Accuracy
 
 ---
 
-## 4. Nihai Hedef: Bilgisayar Bilimleri Odaklı SNN Dil Modeli
+## 4. Aşama 2: Karakter Seviyesi Dil Modeli Veri Hattı (Stage 2 Data Pipeline)
+
+Aşama 2 için 92.03 MB'lık 16 kategorili Bilgisayar Bilimleri (CS) korpusu karakter düzeyinde işlenmiş ve model eğitimine hazır hale getirilmiştir:
+
+### 4.1. Karakter Kümesi Formatı (`charset.json`)
+- **Filtreleme Eşiği:** `min_freq = 5` (nadir sembol ve matematik işaretleri ayıklanır).
+- **Kelime Dağarcığı (Vocab Size):** 736 karakter.
+- **Şema:**
+  - `chars`: Alfabetik sıralı karakter listesi.
+  - `stoi`: Karakterden tamsayı indeksine eşleme (`{char: int}`).
+  - `itos`: İndeksten karaktere eşleme (`{int: char}`).
+  - `freq`: Karakter frekans istatistikleri.
+- **Konumlar:** `data/processed/charset.json` ve `data/raw/tokenizers/charset.json`.
+
+### 4.2. İkili Token Depolama Formatı (`train.bin` ve `val.bin`)
+- **Veri Tipi:** `np.uint16` (`vocab_size < 65,536` olduğu için bellek ve disk tasarrufu sağlar; 2 bayt/token).
+- **Bölme Oranı:** %90 Eğitim (`train.bin`: 83,873,842 token, ~160 MB), %10 Doğrulama (`val.bin`: 9,319,316 token, ~18 MB).
+- **G/Ç Simetrisi:** NumPy `np.save` ve `np.load` ile doğrudan dosya tanıtıcısı üzerinden okunup yazılır.
+
+### 4.3. CharDataset Sözleşmesi ve Veri Besleme
+- **Sınıf:** [`CharDataset`](file:///src/mergen/data/char_dataset.py) (`torch.utils.data.Dataset`).
+- **Pencere Boyutu:** Sabit `block_size = 32`.
+- **Otoregresif Hedef Kaydırma:** Bir sonraki karakteri tahmin etme kuralı:
+  $$x = \text{data}[i : i + \text{block\_size}]$$
+  $$y = \text{data}[i + 1 : i + \text{block\_size} + 1]$$
+  Dolayısıyla her örnek için $y[k] = x[k+1]$ ($k < \text{block\_size}-1$) eşitliği sağlanır.
+
+---
+
+## 5. Nihai Hedef: Bilgisayar Bilimleri Odaklı SNN Dil Modeli
 
 Mergen-SNN'in nihai amacı, standart tüketici donanımında (CPU / DirectML) son derece düşük enerji ve hesaplama maliyetiyle çalışan, Bilgisayar Bilimleri (CS) literatürü ve teknik dokümantasyon üzerinde uzmanlaşmış bir Spiking Dil Modeli (SLM) geliştirmektir.
 

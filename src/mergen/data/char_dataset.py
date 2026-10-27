@@ -1,0 +1,53 @@
+"""Mergen-SNN — Karakter Seviyesi Dil Modeli Veri Kümesi (CharDataset).
+
+PyTorch Dataset sınıfı ve charset yükleme/kodlama yardımcı fonksiyonları.
+"""
+
+import json
+from pathlib import Path
+from typing import Dict, List, Tuple, Union
+
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+
+
+class CharDataset(Dataset):
+    """Karakter seviyesi dil modeli için sabit pencereli PyTorch veri kümesi."""
+
+    def __init__(self, bin_path: Union[str, Path], block_size: int = 32):
+        # np.load ile yükle ve int64 (PyTorch LongTensor) tipine dönüştür
+        self.data = np.load(bin_path).astype(np.int64)
+        self.block_size = block_size
+
+    def __len__(self) -> int:
+        return len(self.data) - self.block_size - 1
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self.data[idx : idx + self.block_size]
+        y = self.data[idx + 1 : idx + self.block_size + 1]
+        return torch.from_numpy(x).long(), torch.from_numpy(y).long()
+
+
+def load_charset(path: Union[str, Path]) -> Tuple[Dict[str, int], Dict[int, str]]:
+    """charset.json dosyasını yükler, (stoi, itos) döndürür. itos int anahtarlara sahiptir."""
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    stoi = data["stoi"]
+    # JSON anahtarları string olarak saklandığı için itos tamsayı anahtarlı sözlüğe dönüştürülür
+    itos = {int(k): v for k, v in data["itos"].items()}
+    return stoi, itos
+
+
+def encode(text: str, stoi: Dict[str, int]) -> List[int]:
+    """Metni stoi eşlemesine göre tamsayı indeks listesine çevirir."""
+    return [stoi[ch] for ch in text if ch in stoi]
+
+
+def decode(ids: Union[List[int], torch.Tensor, np.ndarray], itos: Dict[int, str]) -> str:
+    """Tamsayı indeks listesini veya tensorunu itos ile karaktere çevirir."""
+    if isinstance(ids, torch.Tensor):
+        ids = ids.detach().cpu().tolist()
+    elif isinstance(ids, np.ndarray):
+        ids = ids.tolist()
+    return "".join(itos.get(int(i), "") for i in ids)

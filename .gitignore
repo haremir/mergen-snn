@@ -45,6 +45,7 @@ data/raw/*
 
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/charset.json
 
 # Ensure uv.lock is committed
 !uv.lock
