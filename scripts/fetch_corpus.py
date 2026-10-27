@@ -1,10 +1,14 @@
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
 import tempfile
-from typing import Dict, List, Optional
+import time
+from typing import Dict, List, Optional, Set
+from urllib.parse import urljoin, urlparse
+
 from bs4 import BeautifulSoup
 import pypdf
 import requests
@@ -14,140 +18,186 @@ from mergen.utils.logger import get_logger
 logger = get_logger("mergen.fetch_corpus")
 
 BASE_DIR = Path("data/raw/cs_corpus")
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
 
 # ==============================================================================
-# 1. Veri Kaynakları Tanımları
+# 1. Kaynak ve Kategori Tanımları
 # ==============================================================================
 
-DOWNLOADABLE_SOURCES: Dict[str, Dict] = {
-    "ostep": {
-        "license": "Free to read online, © Remzi & Andrea Arpaci-Dusseau. Personal educational use only.",
-        "files": {
-            "cpu-intro.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-intro.pdf",
-            "cpu-mechanisms.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-mechanisms.pdf",
-            "cpu-sched.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-sched.pdf",
-            "vm-intro.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-intro.pdf",
-            "vm-paging.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-paging.pdf",
-            "threads-intro.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-intro.pdf",
-            "file-intro.pdf": "https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf",
-        },
-    },
-    "python_docs": {
-        "license": "Python Software Foundation License (PSF-2.0).",
-        "files": {
-            "tutorial_index.html": "https://docs.python.org/3/tutorial/index.html",
-            "tutorial_introduction.html": "https://docs.python.org/3/tutorial/introduction.html",
-            "tutorial_controlflow.html": "https://docs.python.org/3/tutorial/controlflow.html",
-            "tutorial_datastructures.html": "https://docs.python.org/3/tutorial/datastructures.html",
-            "tutorial_modules.html": "https://docs.python.org/3/tutorial/modules.html",
-            "tutorial_classes.html": "https://docs.python.org/3/tutorial/classes.html",
-        },
-    },
-    "cython_docs": {
-        "license": "Apache-2.0 (Cython project).",
-        "files": {
-            "cython_tutorial.html": "https://cython.readthedocs.io/en/latest/src/tutorial/cython_tutorial.html",
-            "cython_cdef.html": "https://cython.readthedocs.io/en/latest/src/tutorial/cdef.html",
-            "cython_strings.html": "https://cython.readthedocs.io/en/latest/src/tutorial/strings.html",
-            "cython_pure.html": "https://cython.readthedocs.io/en/latest/src/tutorial/pure.html",
-        },
-    },
+LICENSE_NOTES = {
+    "algorithms": "Open educational resources and open-access algorithmic textbooks (Jeff Erickson, AlgoXY, OpenDataStructures).",
+    "theory": "Open textbooks in theoretical computer science and discrete mathematics (MIT OCW, HWS, StFX).",
+    "systems": "Open systems textbooks and reference materials (Dive into Systems, Bottom Up CS, Gustavus OS).",
+    "compilers": "Open compiler textbooks (Crafting Interpreters by Bob Nystrom, Basics of Compiler Design by Torben Mogensen).",
+    "databases": "Readings in Database Systems (The Red Book 5th ed.) and open database resources.",
+    "networking": "Open Computer Networking principles and foundational IETF RFC standards (IETF / computer-networking.info).",
+    "ai_ml": "Open deep learning and reinforcement learning books (Dive into Deep Learning - D2L, Sutton & Barto RL).",
+    "papers_we_love": "Academic CS papers curated by the Papers We Love community, hosted for educational research.",
+    "lecture_notes": "Open courseware and university lecture slides (CMU 15-213, MIT OCW).",
+    "ostep": "Free to read online, © Remzi & Andrea Arpaci-Dusseau. Personal educational use only.",
+    "python_docs": "Python Software Foundation License (PSF-2.0).",
+    "c_docs": "GNU Free Documentation License (GNU C Reference Manual).",
+    "cython_docs": "Apache-2.0 (Cython project).",
+    "architecture_local": "Copyrighted textbooks (Patterson & Hennessy). Local copy provided by user for personal research.",
 }
 
-GIT_CLONE_SOURCES: Dict[str, Dict] = {
-    "gc_papers": {
-        "repo": "https://github.com/papers-we-love/papers-we-love.git",
-        "subpath": "garbage-collection",
-        "license": "Papers hosted for educational purposes under fair use; original authors retain copyright.",
+DIRECT_PDF_SOURCES = {
+    "algorithms": [
+        ("algorithms_jeffe.pdf", "https://jeffe.cs.illinois.edu/teaching/algorithms/book/Algorithms-JeffE.pdf"),
+        ("elementary_algorithms.pdf", "https://github.com/liuxinyu95/AlgoXY/releases/download/v0.618033/elementary-algorithms.pdf"),
+        ("ods_python.pdf", "https://opendatastructures.org/ods-python.pdf"),
+    ],
+    "theory": [
+        ("theory_of_computing.pdf", "https://people.stfx.ca/tasmith/theory/TheoryOfComputing.pdf"),
+        ("foundations_of_computation.pdf", "https://math.hws.edu/FoundationsOfComputation/FoundationsOfComputation.pdf"),
+        ("mit_mcs.pdf", "https://courses.csail.mit.edu/6.042/spring18/mcs.pdf"),
+    ],
+    "systems": [
+        ("os_book_max.pdf", "https://gustavus.edu/mcs/max/os-book/os-book.pdf"),
+        ("dive_into_systems.pdf", "https://diveintosystems.org/book/pdf/DiveIntoSystems.pdf"),
+    ],
+    "compilers": [
+        ("basics_compiler_design.pdf", "https://www.diku.dk/~torbenm/Basics/basics_lulu2.pdf"),
+    ],
+    "ai_ml": [
+        ("d2l_en.pdf", "https://d2l.ai/d2l-en.pdf"),
+        ("sutton_barto_rl.pdf", "http://incompleteideas.net/book/RLbook2020.pdf"),
+    ],
+    "ostep": [
+        ("cpu-intro.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-intro.pdf"),
+        ("cpu-mechanisms.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-mechanisms.pdf"),
+        ("cpu-sched.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-sched.pdf"),
+        ("vm-intro.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-intro.pdf"),
+        ("vm-paging.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-paging.pdf"),
+        ("vm-api.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-api.pdf"),
+        ("vm-mechanism.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-mechanism.pdf"),
+        ("vm-tlbs.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-tlbs.pdf"),
+        ("vm-beyondphys.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-beyondphys.pdf"),
+        ("vm-beyondphys-policy.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-beyondphys-policy.pdf"),
+        ("vm-complete.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/vm-complete.pdf"),
+        ("threads-intro.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-intro.pdf"),
+        ("threads-locks.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-locks.pdf"),
+        ("threads-locks-usage.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-locks-usage.pdf"),
+        ("threads-cv.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-cv.pdf"),
+        ("threads-sema.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-sema.pdf"),
+        ("threads-bugs.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/threads-bugs.pdf"),
+        ("file-intro.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf"),
+        ("file-devices.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-devices.pdf"),
+        ("file-disks.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-disks.pdf"),
+        ("file-implementation.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf"),
+        ("file-ffs.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-ffs.pdf"),
+        ("file-journaling.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-journaling.pdf"),
+        ("file-lfs.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-lfs.pdf"),
+        ("file-integrity.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/file-integrity.pdf"),
+        ("dist-intro.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/dist-intro.pdf"),
+        ("dist-nfs.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/dist-nfs.pdf"),
+        ("dist-afs.pdf", "https://pages.cs.wisc.edu/~remzi/OSTEP/dist-afs.pdf"),
+    ],
+    "networking": [
+        ("rfc793_tcp.txt", "https://www.rfc-editor.org/rfc/rfc793.txt"),
+        ("rfc791_ip.txt", "https://www.rfc-editor.org/rfc/rfc791.txt"),
+        ("rfc2616_http.txt", "https://www.rfc-editor.org/rfc/rfc2616.txt"),
+        ("rfc1035_dns.txt", "https://www.rfc-editor.org/rfc/rfc1035.txt"),
+        ("rfc8446_tls13.txt", "https://www.rfc-editor.org/rfc/rfc8446.txt"),
+        ("rfc5246_tls12.txt", "https://www.rfc-editor.org/rfc/rfc5246.txt"),
+        ("rfc7230_http11.txt", "https://www.rfc-editor.org/rfc/rfc7230.txt"),
+        ("rfc7231_http_semantics.txt", "https://www.rfc-editor.org/rfc/rfc7231.txt"),
+        ("rfc4271_bgp.txt", "https://www.rfc-editor.org/rfc/rfc4271.txt"),
+    ],
+    "c_docs": [
+        ("c11_standard_n1570.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf"),
+    ],
+}
+
+CRAWL_HTML_SOURCES = [
+    {
+        "category": "compilers",
+        "subfolder": "crafting_interpreters",
+        "index_url": "https://craftinginterpreters.com/contents.html",
+        "link_pattern": r"https://craftinginterpreters\.com/[a-z0-9\-]+\.html",
+    },
+    {
+        "category": "systems",
+        "subfolder": "bottom_up_cs",
+        "index_url": "https://www.bottomupcs.com/",
+        "link_pattern": r"https://www\.bottomupcs\.com/(chapter\d+|index|[a-z0-9_]+)\.html",
+    },
+    {
+        "category": "databases",
+        "subfolder": "redbook",
+        "index_url": "http://www.redbook.io/",
+        "link_pattern": r"http://www\.redbook\.io/([a-z0-9\-]+)\.html",
+    },
+    {
+        "category": "python_docs",
+        "subfolder": "tutorial",
+        "index_url": "https://docs.python.org/3/tutorial/index.html",
+        "link_pattern": r"https://docs\.python\.org/3/tutorial/[a-z0-9_]+\.html",
+    },
+    {
+        "category": "python_docs",
+        "subfolder": "library",
+        "index_url": "https://docs.python.org/3/library/index.html",
+        "link_pattern": r"https://docs\.python\.org/3/library/(os|sys|builtins|functions|stdtypes|exceptions|collections|itertools|functools|asyncio|threading|multiprocessing|socket|re|json|math|typing)\.html",
+    },
+    {
+        "category": "cython_docs",
+        "subfolder": "",
+        "index_url": "https://cython.readthedocs.io/en/latest/src/tutorial/index.html",
+        "link_pattern": r"https://cython\.readthedocs\.io/en/latest/src/tutorial/[a-z0-9_]+\.html",
+    },
+]
+
+LECTURE_NOTE_SOURCES = [
+    {
+        "category": "lecture_notes",
+        "subfolder": "cmu_213",
+        "index_url": "https://www.cs.cmu.edu/~213/lectures/",
+        "link_pattern": r"\.pdf$",
     }
-}
+]
 
-LOCAL_REQUIRED_SOURCES: Dict[str, Dict] = {
-    "architecture_local": {
-        "files": [
-            "patterson_hennessy_cod.pdf",
-            "patterson_hennessy_caa.pdf",
-        ],
-        "instruction": "Bu telifli kitaplar otomatik indirilemez. PDF'lerini data/raw/cs_corpus/architecture_local/ altına elle koy, sonra bu script'i tekrar çalıştır.",
-        "license": "Copyrighted textbooks (Patterson & Hennessy). Local copy provided by user for personal research.",
-    }
+PWL_SUBFOLDERS = [
+    "algorithms",
+    "distributed_systems",
+    "machine_learning",
+    "operating_systems",
+    "programming_languages",
+    "security",
+    "garbage_collection",
+]
+
+LOCAL_REQUIRED = {
+    "architecture_local": [
+        "patterson_hennessy_cod.pdf",
+        "patterson_hennessy_caa.pdf",
+    ]
 }
 
 
 # ==============================================================================
-# 2. Yardımcı Fonksiyonlar (Metin Çıkarma ve Dosya İşlemleri)
+# 2. Yardımcı Fonksiyonlar (Dosya, Ağ, Metin Çıkarma)
 # ==============================================================================
 
 def remove_readonly(func, path, _):
-    """Windows'ta git reposu silinirken salt-okunur izinlerini kaldırır."""
+    """Windows'ta git reposu silinirken salt-okunur dosyaların silinmesini sağlar."""
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
 
-def write_license_note(dest_dir: Path, note: str):
-    """Kategori dizinine LICENSE_NOTE.txt dosyasını yazar."""
-    license_file = dest_dir / "LICENSE_NOTE.txt"
-    with open(license_file, "w", encoding="utf-8") as f:
+def write_license_note(dest_dir: Path, category_name: str):
+    """Kategoriye özel LICENSE_NOTE.txt dosyasını oluşturur."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    note = LICENSE_NOTES.get(category_name, "Educational and research use.")
+    with open(dest_dir / "LICENSE_NOTE.txt", "w", encoding="utf-8") as f:
         f.write(note.strip() + "\n")
 
 
-def extract_text_from_html(html_path: Path) -> bool:
-    """HTML dosyasından script/style/nav etiketlerini temizleyerek .txt üretir."""
-    try:
-        with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
-            html_content = f.read()
-
-        soup = BeautifulSoup(html_content, "lxml")
-        for tag in soup(["script", "style", "nav", "aside", "header", "footer"]):
-            tag.decompose()
-
-        text = soup.get_text(separator="\n")
-        lines = [line.strip() for line in text.splitlines()]
-        clean_text = "\n".join(chunk for chunk in lines if chunk)
-
-        txt_path = html_path.with_suffix(".txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(clean_text)
-
-        return True
-    except Exception as e:
-        logger.error(f"[SKIP] HTML extraction hatası ({html_path.name}): {e}")
-        return False
-
-
-def extract_text_from_pdf(pdf_path: Path) -> bool:
-    """PDF dosyasından pypdf ile sayfa sayfa metin çıkararak .txt üretir."""
-    try:
-        reader = pypdf.PdfReader(str(pdf_path))
-        pages_text = []
-        for page_idx, page in enumerate(reader.pages):
-            try:
-                t = page.extract_text()
-                if t:
-                    pages_text.append(t)
-            except Exception as pe:
-                logger.warning(f"{pdf_path.name} sayfa {page_idx} çıkarılamadı: {pe}")
-
-        if not pages_text:
-            logger.warning(f"[SKIP] {pdf_path.name} içinde metin bulunamadı.")
-            return False
-
-        txt_path = pdf_path.with_suffix(".txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write("\n\n".join(pages_text))
-
-        return True
-    except Exception as e:
-        logger.error(f"[SKIP] PDF extraction hatası ({pdf_path.name}): {e}")
-        return False
-
-
-# ==============================================================================
-# 3. İndirme ve İşleme Yöneticisi
-# ==============================================================================
-
 def format_size(bytes_num: int) -> str:
-    """Byte miktarını okunabilir boyuta dönüştürür."""
+    """Okunabilir boyut formatı döndürür."""
     if bytes_num < 1024:
         return f"{bytes_num} B"
     elif bytes_num < 1024 * 1024:
@@ -156,190 +206,399 @@ def format_size(bytes_num: int) -> str:
         return f"{bytes_num / (1024 * 1024):.2f} MB"
 
 
-def main():
-    logger.info("==========================================")
-    logger.info("Mergen-SNN — CS Korpus İndirme & Metin Çıkarma")
-    logger.info("==========================================")
+def download_file_stream(session: requests.Session, url: str, dest_path: Path, timeout: int = 60) -> bool:
+    """Büyük dosyaları chunk'lar halinde diske indirir."""
+    try:
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        with session.get(url, stream=True, timeout=timeout) as resp:
+            if resp.status_code != 200:
+                logger.warning(f"HTTP {resp.status_code}: {url}")
+                return False
+            with open(dest_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        return True
+    except Exception as e:
+        logger.warning(f"İndirme hatası ({url}): {e}")
+        if dest_path.exists():
+            dest_path.unlink()
+        return False
 
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    })
 
-    stats: Dict[str, Dict] = {}
-    skip_list: List[Dict] = []
-    pdf_stats = {"total": 0, "success": 0}
+def extract_text_from_html(html_path: Path) -> bool:
+    """HTML içeriğini temizleyip düz metin .txt olarak kaydeder."""
+    txt_path = html_path.with_suffix(".txt")
+    if txt_path.exists() and txt_path.stat().st_size > 0:
+        return True
 
-    # --------------------------------------------------------------------------
-    # A) İndirilebilir Kaynaklar (Downloadable Sources)
-    # --------------------------------------------------------------------------
-    for category, cat_data in DOWNLOADABLE_SOURCES.items():
-        cat_dir = BASE_DIR / category
-        cat_dir.mkdir(parents=True, exist_ok=True)
-        write_license_note(cat_dir, cat_data["license"])
+    try:
+        with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+            html_content = f.read()
 
-        cat_stats = {"downloaded": 0, "bytes": 0, "txt_extracted": 0, "errors": 0}
+        soup = BeautifulSoup(html_content, "lxml")
+        for tag in soup(["script", "style", "nav", "aside", "header", "footer", "meta", "noscript"]):
+            tag.decompose()
 
-        for filename, url in cat_data["files"].items():
-            dest_file = cat_dir / filename
+        text = soup.get_text(separator="\n")
+        lines = [line.strip() for line in text.splitlines()]
+        clean_text = "\n".join(chunk for chunk in lines if chunk)
+
+        if not clean_text:
+            return False
+
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(clean_text)
+        return True
+    except Exception as e:
+        logger.warning(f"HTML extraction hatası ({html_path.name}): {e}")
+        return False
+
+
+def extract_text_from_pdf(pdf_path: Path) -> bool:
+    """PDF'i sayfa sayfa okuyup .txt üretir."""
+    txt_path = pdf_path.with_suffix(".txt")
+    if txt_path.exists() and txt_path.stat().st_size > 0:
+        return True
+
+    try:
+        reader = pypdf.PdfReader(str(pdf_path))
+        pages_text = []
+        for page_idx, page in enumerate(reader.pages):
             try:
-                resp = session.get(url, timeout=30)
-                if resp.status_code != 200:
-                    err_msg = f"HTTP {resp.status_code}"
-                    print(f"[SKIP] {category}/{url} ({err_msg})")
-                    logger.warning(f"[SKIP] {category}/{url} ({err_msg})")
-                    cat_stats["errors"] += 1
-                    skip_list.append({"category": category, "url": url, "reason": err_msg})
+                t = page.extract_text()
+                if t:
+                    pages_text.append(t)
+            except Exception:
+                continue
+
+        if not pages_text:
+            logger.warning(f"PDF'ten metin çıkarılamadı (boş veya resim): {pdf_path.name}")
+            return False
+
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write("\n\n".join(pages_text))
+        return True
+    except Exception as e:
+        logger.warning(f"PDF extraction hatası ({pdf_path.name}): {e}")
+        return False
+
+
+# ==============================================================================
+# 3. İndirme ve İşleme Motoru
+# ==============================================================================
+
+def process_direct_files(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict):
+    """Doğrudan PDF ve TXT/HTML dosyalarını indirir ve metin çıkarır."""
+    logger.info(">>> Doğrudan Dosyalar (PDF & TXT & HTML) İşleniyor...")
+    for cat_name, file_list in DIRECT_PDF_SOURCES.items():
+        cat_dir = BASE_DIR / cat_name
+        write_license_note(cat_dir, cat_name)
+
+        for filename, url in file_list:
+            dest_file = cat_dir / filename
+            ext = dest_file.suffix.lower()
+
+            # Daha önce indirildiyse ve metni varsa tekrar indirme
+            if dest_file.exists() and dest_file.stat().st_size > 1024:
+                size_str = format_size(dest_file.stat().st_size)
+                print(f"[OK] {cat_name}/{filename} ({size_str}) [Önbellek]")
+            else:
+                ok = download_file_stream(session, url, dest_file, timeout=90)
+                if not ok:
+                    print(f"[SKIP] {cat_name}/{url} (İndirilemedi / Timeout / 404)")
+                    skip_list.append({"category": cat_name, "url": url, "reason": "Download Failed / 404"})
                     continue
+                size_str = format_size(dest_file.stat().st_size)
+                print(f"[OK] {cat_name}/{filename} ({size_str})")
 
-                content = resp.content
-                with open(dest_file, "wb") as f:
-                    f.write(content)
+            # Metin Çıkarma
+            if ext == ".pdf":
+                pdf_stats["total"] += 1
+                if extract_text_from_pdf(dest_file):
+                    pdf_stats["success"] += 1
+            elif ext == ".html":
+                extract_text_from_html(dest_file)
+            elif ext == ".txt":
+                # Zaten metin dosyası, txt olarak mevcuttur
+                pass
 
-                cat_stats["downloaded"] += 1
-                cat_stats["bytes"] += len(content)
-                size_str = format_size(len(content))
-                print(f"[OK] {category}/{filename} ({size_str})")
-                logger.info(f"[OK] {category}/{filename} ({size_str})")
 
-                # Metin çıkarma
-                ext = dest_file.suffix.lower()
-                if ext == ".html":
-                    if extract_text_from_html(dest_file):
-                        cat_stats["txt_extracted"] += 1
-                elif ext == ".pdf":
-                    pdf_stats["total"] += 1
-                    if extract_text_from_pdf(dest_file):
-                        cat_stats["txt_extracted"] += 1
-                        pdf_stats["success"] += 1
+def process_html_crawler(session: requests.Session, skip_list: List[Dict]):
+    """HTML tabanlı açık kitapları ana sayfasından tarayıp tüm bölümleri indirir."""
+    logger.info(">>> HTML Kitaplar & Dokümantasyon Taranıyor...")
+    for item in CRAWL_HTML_SOURCES:
+        cat_name = item["category"]
+        subfolder = item["subfolder"]
+        index_url = item["index_url"]
+        link_pattern = re.compile(item["link_pattern"], re.IGNORECASE)
 
-            except Exception as e:
-                err_msg = str(e)
-                print(f"[SKIP] {category}/{url} ({err_msg})")
-                logger.warning(f"[SKIP] {category}/{url} ({err_msg})")
-                cat_stats["errors"] += 1
-                skip_list.append({"category": category, "url": url, "reason": err_msg})
-
-        stats[category] = cat_stats
-
-    # --------------------------------------------------------------------------
-    # B) Git Klonlama Kaynakları (Git Clone Sources)
-    # --------------------------------------------------------------------------
-    for category, cat_data in GIT_CLONE_SOURCES.items():
-        cat_dir = BASE_DIR / category
-        cat_dir.mkdir(parents=True, exist_ok=True)
-        write_license_note(cat_dir, cat_data["license"])
-
-        cat_stats = {"downloaded": 0, "bytes": 0, "txt_extracted": 0, "errors": 0}
-        repo_url = cat_data["repo"]
-        subpath = cat_data["subpath"]
-
-        logger.info(f"Git repo klonlanıyor (sparse): {repo_url} [{subpath}]...")
-        temp_dir = tempfile.mkdtemp(prefix="mergen_git_")
+        target_dir = BASE_DIR / cat_name / subfolder if subfolder else BASE_DIR / cat_name
+        write_license_note(target_dir, cat_name)
 
         try:
-            # Hızlı sparse clone
-            cmd_clone = ["git", "clone", "--depth", "1", "--filter=blob:none", "--sparse", repo_url, temp_dir]
-            subprocess.run(cmd_clone, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            cmd_sparse = ["git", "-C", temp_dir, "sparse-checkout", "set", subpath]
-            subprocess.run(cmd_sparse, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            resp = session.get(index_url, timeout=30)
+            if resp.status_code != 200:
+                print(f"[SKIP] {cat_name}/{index_url} (HTTP {resp.status_code})")
+                skip_list.append({"category": cat_name, "url": index_url, "reason": f"HTTP {resp.status_code}"})
+                continue
 
-            src_folder = Path(temp_dir) / subpath
-            if not src_folder.exists():
-                # İsim alternatiflerini dene
-                for alt in ["garbage_collection", "garbage-collection", "Garbage-Collection"]:
-                    candidate = Path(temp_dir) / alt
-                    if candidate.exists():
-                        src_folder = candidate
-                        break
+            soup = BeautifulSoup(resp.content, "lxml")
+            discovered_links: Set[str] = set()
 
-            if src_folder.exists():
-                for item in src_folder.iterdir():
-                    if item.is_file():
-                        dest_file = cat_dir / item.name
-                        shutil.copy2(item, dest_file)
-                        cat_stats["downloaded"] += 1
-                        size = dest_file.stat().st_size
-                        cat_stats["bytes"] += size
-                        print(f"[OK] {category}/{item.name} ({format_size(size)})")
+            for a_tag in soup.find_all("a", href=True):
+                full_url = urljoin(index_url, a_tag["href"]).split("#")[0]
+                if link_pattern.search(full_url):
+                    discovered_links.add(full_url)
 
-                        ext = dest_file.suffix.lower()
+            # Ana sayfayı da ekle
+            discovered_links.add(index_url)
+
+            for page_url in sorted(discovered_links):
+                parsed = urlparse(page_url)
+                name = os.path.basename(parsed.path) or "index.html"
+                if not name.endswith(".html"):
+                    name += ".html"
+                dest_file = target_dir / name
+
+                if dest_file.exists() and dest_file.stat().st_size > 0:
+                    pass
+                else:
+                    try:
+                        p_resp = session.get(page_url, timeout=25)
+                        if p_resp.status_code == 200:
+                            with open(dest_file, "wb") as f:
+                                f.write(p_resp.content)
+                            print(f"[OK] {cat_name}/{dest_file.name} ({format_size(len(p_resp.content))})")
+                        else:
+                            print(f"[SKIP] {cat_name}/{page_url} (HTTP {p_resp.status_code})")
+                            skip_list.append({"category": cat_name, "url": page_url, "reason": f"HTTP {p_resp.status_code}"})
+                            continue
+                    except Exception as e:
+                        print(f"[SKIP] {cat_name}/{page_url} ({e})")
+                        skip_list.append({"category": cat_name, "url": page_url, "reason": str(e)})
+                        continue
+
+                extract_text_from_html(dest_file)
+
+        except Exception as e:
+            print(f"[SKIP] {cat_name}/{index_url} (Genel Tarama Hatası: {e})")
+            skip_list.append({"category": cat_name, "url": index_url, "reason": str(e)})
+
+
+def process_lecture_notes(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict):
+    """Üniversite ders notları ve slaytlarını (CMU vb.) indirir."""
+    logger.info(">>> Ders Notları & Slaytlar Taranıyor...")
+    for item in LECTURE_NOTE_SOURCES:
+        cat_name = item["category"]
+        subfolder = item["subfolder"]
+        index_url = item["index_url"]
+        target_dir = BASE_DIR / cat_name / subfolder if subfolder else BASE_DIR / cat_name
+        write_license_note(target_dir, cat_name)
+
+        try:
+            resp = session.get(index_url, timeout=30)
+            if resp.status_code != 200:
+                print(f"[SKIP] {cat_name}/{index_url} (HTTP {resp.status_code})")
+                skip_list.append({"category": cat_name, "url": index_url, "reason": f"HTTP {resp.status_code}"})
+                continue
+
+            soup = BeautifulSoup(resp.content, "lxml")
+            pdf_links = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.lower().endswith(".pdf"):
+                    pdf_links.add(urljoin(index_url, href))
+
+            for pdf_url in sorted(pdf_links):
+                fname = os.path.basename(urlparse(pdf_url).path)
+                dest_file = target_dir / fname
+
+                if dest_file.exists() and dest_file.stat().st_size > 1024:
+                    print(f"[OK] {cat_name}/{fname} ({format_size(dest_file.stat().st_size)}) [Önbellek]")
+                else:
+                    ok = download_file_stream(session, pdf_url, dest_file, timeout=40)
+                    if not ok:
+                        print(f"[SKIP] {cat_name}/{pdf_url} (İndirilemedi)")
+                        skip_list.append({"category": cat_name, "url": pdf_url, "reason": "Lecture note 404/fail"})
+                        continue
+                    print(f"[OK] {cat_name}/{fname} ({format_size(dest_file.stat().st_size)})")
+
+                pdf_stats["total"] += 1
+                if extract_text_from_pdf(dest_file):
+                    pdf_stats["success"] += 1
+
+        except Exception as e:
+            print(f"[SKIP] {cat_name}/{index_url} (Ders Notu Hatası: {e})")
+            skip_list.append({"category": cat_name, "url": index_url, "reason": str(e)})
+
+
+def process_papers_we_love(skip_list: List[Dict], pdf_stats: Dict):
+    """Papers We Love makale koleksiyonunu yerel kontrol eder veya klonlar."""
+    logger.info(">>> Papers We Love Makale Koleksiyonu Denetleniyor...")
+    cat_dir = BASE_DIR / "papers_we_love"
+    cat_dir.mkdir(parents=True, exist_ok=True)
+    write_license_note(cat_dir, "papers_we_love")
+
+    # Eğer zaten klasörler indirilmişse tekrar clone yapma
+    existing_pdfs = list(cat_dir.rglob("*.pdf"))
+    if len(existing_pdfs) >= 10:
+        logger.info(f"Papers We Love önbellekte mevcut ({len(existing_pdfs)} PDF). Klonlama atlandı.")
+        for pdf_path in existing_pdfs:
+            pdf_stats["total"] += 1
+            if extract_text_from_pdf(pdf_path):
+                pdf_stats["success"] += 1
+        return
+
+    repo_url = "https://github.com/papers-we-love/papers-we-love.git"
+    temp_dir = tempfile.mkdtemp(prefix="pwl_clone_")
+
+    try:
+        logger.info("git clone --depth 1 başlatıldı...")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, temp_dir],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=180,
+        )
+
+        repo_path = Path(temp_dir)
+        all_dirs = [d for d in repo_path.iterdir() if d.is_dir()]
+
+        for target_cat in PWL_SUBFOLDERS:
+            matched = None
+            norm_target = target_cat.replace("-", "_").lower()
+            for d in all_dirs:
+                if d.name.replace("-", "_").lower() == norm_target:
+                    matched = d
+                    break
+
+            if not matched:
+                logger.warning(f"PWL alt klasörü bulunamadı: {target_cat}")
+                continue
+
+            sub_dest = cat_dir / target_cat
+            sub_dest.mkdir(parents=True, exist_ok=True)
+
+            for file_path in matched.glob("**/*"):
+                if file_path.is_file():
+                    ext = file_path.suffix.lower()
+                    if ext in [".pdf", ".md", ".txt"]:
+                        dest_file = sub_dest / file_path.name
+                        if not dest_file.exists():
+                            shutil.copy2(file_path, dest_file)
+                            print(f"[OK] papers_we_love/{target_cat}/{file_path.name} ({format_size(dest_file.stat().st_size)})")
+
                         if ext == ".pdf":
                             pdf_stats["total"] += 1
                             if extract_text_from_pdf(dest_file):
-                                cat_stats["txt_extracted"] += 1
                                 pdf_stats["success"] += 1
-                        elif ext in [".md", ".txt"]:
-                            # Zaten metin dosyası
-                            cat_stats["txt_extracted"] += 1
-            else:
-                msg = f"Repo içinde {subpath} klasörü bulunamadı."
-                print(f"[SKIP] {category}/{repo_url} ({msg})")
-                cat_stats["errors"] += 1
-                skip_list.append({"category": category, "url": repo_url, "reason": msg})
 
-        except Exception as e:
-            msg = f"Git işlemi başarısız: {e}"
-            print(f"[SKIP] {category}/{repo_url} ({msg})")
-            cat_stats["errors"] += 1
-            skip_list.append({"category": category, "url": repo_url, "reason": msg})
+    except Exception as e:
+        msg = f"Papers We Love klonlama hatası: {e}"
+        print(f"[SKIP] papers_we_love/{repo_url} ({msg})")
+        skip_list.append({"category": "papers_we_love", "url": repo_url, "reason": msg})
 
-        finally:
-            shutil.rmtree(temp_dir, onerror=remove_readonly)
+    finally:
+        shutil.rmtree(temp_dir, onerror=remove_readonly)
 
-        stats[category] = cat_stats
 
-    # --------------------------------------------------------------------------
-    # C) Yerel Zorunlu Kaynaklar (Local Required Sources)
-    # --------------------------------------------------------------------------
-    for category, cat_data in LOCAL_REQUIRED_SOURCES.items():
-        cat_dir = BASE_DIR / category
+def check_local_required():
+    """Telifli veya kullanıcı tarafından sağlanması gereken kitapları denetler."""
+    logger.info(">>> Yerel Gerekli Kitaplar Denetleniyor...")
+    for cat_name, files in LOCAL_REQUIRED.items():
+        cat_dir = BASE_DIR / cat_name
         cat_dir.mkdir(parents=True, exist_ok=True)
-        write_license_note(cat_dir, cat_data["license"])
+        write_license_note(cat_dir, cat_name)
 
-        cat_stats = {"downloaded": 0, "bytes": 0, "txt_extracted": 0, "errors": 0, "missing": 0}
-
-        for fname in cat_data["files"]:
+        for fname in files:
             fpath = cat_dir / fname
-            if fpath.exists():
-                size = fpath.stat().st_size
-                cat_stats["downloaded"] += 1
-                cat_stats["bytes"] += size
-                print(f"[OK] {category}/{fname} ({format_size(size)})")
-                pdf_stats["total"] += 1
-                if extract_text_from_pdf(fpath):
-                    cat_stats["txt_extracted"] += 1
-                    pdf_stats["success"] += 1
+            if fpath.exists() and fpath.stat().st_size > 0:
+                print(f"[OK] {cat_name}/{fname} ({format_size(fpath.stat().st_size)})")
+                extract_text_from_pdf(fpath)
             else:
-                cat_stats["missing"] += 1
-                print(f"[EKSİK] {category}/{fname}")
-                print(f"       Talimat: {cat_data['instruction']}")
+                print(f"[EKSİK] {cat_name}/{fname}")
+                print("       Talimat: Bu telifli kitaplar otomatik indirilemez. PDF'lerini data/raw/cs_corpus/architecture_local/ altına elle koy, sonra bu script'i tekrar çalıştır.")
 
-        stats[category] = cat_stats
 
-    # --------------------------------------------------------------------------
-    # D) Genel Özet Raporu
-    # --------------------------------------------------------------------------
-    print("\n" + "=" * 60)
-    print("KATEGORİ BAZINDA KORPUS ÖZETİ")
-    print("=" * 60)
-    for cat, data in stats.items():
-        err_str = f", Hata/404: {data['errors']}" if "errors" in data else ""
-        missing_str = f", Eksik: {data['missing']}" if "missing" in data else ""
+# ==============================================================================
+# 4. Ana Çalıştırma Döngüsü ve Raporlama
+# ==============================================================================
+
+def main():
+    start_time = time.time()
+    logger.info("==========================================")
+    logger.info("Mergen-SNN — Genişletilmiş CS Korpus Hattı")
+    logger.info("==========================================")
+
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+
+    skip_list: List[Dict] = []
+    pdf_stats = {"total": 0, "success": 0}
+
+    # 1. Doğrudan Dosyalar (D2L, Sutton & Barto, Erickson, MCS, OSTEP, RFC'ler vb.)
+    process_direct_files(session, skip_list, pdf_stats)
+
+    # 2. HTML tabanlı kitaplar (Crafting Interpreters, BottomUpCS, RedBook, Python Docs vb.)
+    process_html_crawler(session, skip_list)
+
+    # 3. Ders notları ve slaytlar (CMU 15-213 vb.)
+    process_lecture_notes(session, skip_list, pdf_stats)
+
+    # 4. Papers We Love makale arşivi
+    process_papers_we_love(skip_list, pdf_stats)
+
+    # 5. Yerel telifli kitap denetimi
+    check_local_required()
+
+    # ==========================================================================
+    # İstatistikler ve Kategori Özeti
+    # ==========================================================================
+    elapsed = time.time() - start_time
+    print("\n" + "=" * 70)
+    print("KATEGORİ BAZINDA CS KORPUS ÖZETİ")
+    print("=" * 70)
+
+    total_all_bytes = 0
+    total_txt_bytes = 0
+    total_file_count = 0
+    total_txt_count = 0
+
+    categories = sorted([d.name for d in BASE_DIR.iterdir() if d.is_dir()])
+    for cat in categories:
+        cat_dir = BASE_DIR / cat
+        all_files = [f for f in cat_dir.rglob("*") if f.is_file()]
+        # Sadece saf içerik .txt dosyalarını topla (.txt uzantılı veya rfc .txt)
+        txt_files = [f for f in all_files if f.suffix.lower() == ".txt" and f.name != "LICENSE_NOTE.txt"]
+
+        cat_total_size = sum(f.stat().st_size for f in all_files)
+        cat_txt_size = sum(f.stat().st_size for f in txt_files)
+
+        total_all_bytes += cat_total_size
+        total_txt_bytes += cat_txt_size
+        total_file_count += len(all_files)
+        total_txt_count += len(txt_files)
+
         print(
-            f"- {cat:<20}: {data['downloaded']} dosya ({format_size(data['bytes'])}), "
-            f"Çıkarılan .txt: {data['txt_extracted']}{err_str}{missing_str}"
+            f"- {cat:<20}: {len(all_files):>3} dosya ({format_size(cat_total_size):>9}) | "
+            f".txt: {len(txt_files):>3} adet ({format_size(cat_txt_size):>9})"
         )
 
-    print("-" * 60)
-    print(f"Toplam Atlanan/Hata (SKIP) Sayısı: {len(skip_list)}")
+    print("-" * 70)
+    print(f"Toplam Dosya Sayısı       : {total_file_count}")
+    print(f"Toplam Çıkarılan .txt     : {total_txt_count}")
+    print(f"Toplam Ham + TXT Boyutu   : {format_size(total_all_bytes)}")
+    print(f"TOPLAM ÇIKARILAN METİN    : {format_size(total_txt_bytes)} ({total_txt_bytes / (1024 * 1024):.2f} MB)")
+    hedef_durumu = "[BASARILI - HEDEF ASILDI]" if total_txt_bytes >= 20 * 1024 * 1024 else "[20 MB ALTINDA]"
+    print(f"Hedef Kontrolü (>= 20 MB) : {hedef_durumu}")
+    print(f"Toplam Hata / SKIP        : {len(skip_list)}")
     if pdf_stats["total"] > 0:
-        ratio = (pdf_stats["success"] / pdf_stats["total"]) * 100
-        print(f"PDF Metin Çıkarma Başarısı       : {pdf_stats['success']}/{pdf_stats['total']} (%{ratio:.1f})")
-    else:
-        print("PDF Metin Çıkarma Başarısı       : PDF işlenmedi")
-    print("=" * 60 + "\n")
+        pct = (pdf_stats["success"] / pdf_stats["total"]) * 100
+        print(f"PDF Extraction Başarısı   : {pdf_stats['success']}/{pdf_stats['total']} (%{pct:.1f})")
+    print(f"Toplam Çalışma Süresi     : {elapsed:.1f} saniye")
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":
