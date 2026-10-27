@@ -1,9 +1,9 @@
 """Mergen-SNN — Stage 2 Veri Hazırlama Hattı (Char-level Dil Modeli).
 
-data/raw/cs_corpus altındaki metinleri toplar, REQUIRED_CHARS (ASCII + Türkçe +
-temel noktalama) ve min_freq>=50 karakterlerle kompakt bir charset oluşturur,
-<unk> (id=0) mekanizmasını entegre eder, metni uint16 token dizisine dönüştürür
-ve train.bin / val.bin olarak kaydeder.
+data/raw/cs_corpus altındaki metinleri toplar, kontrol karakterlerini temizler,
+REQUIRED_CHARS (ASCII + Türkçe + temel noktalama) ve min_freq>=50 karakterlerle
+kompakt bir charset oluşturur, <unk> (id=0) mekanizmasını entegre eder, metni
+uint16 token dizisine dönüştürür ve train.bin / val.bin olarak kaydeder.
 """
 
 from collections import Counter
@@ -40,16 +40,28 @@ REQUIRED_CHARS = (
 )
 
 
-def collect_texts(corpus_dir: Path) -> str:
-    """data/raw/cs_corpus/ altındaki tüm geçerli *.txt dosyalarını toplar.
+def clean_text(text: str) -> str:
+    """Kontrol karakterlerini at, sadece yazdırılabilir + \t \n \r tut."""
+    allowed_controls = {"\t", "\n", "\r"}
+    return "".join(
+        ch for ch in text
+        if (ord(ch) >= 32 and ord(ch) != 127) or ch in allowed_controls
+    )
 
-    Atlanan dosyalar: LICENSE_NOTE.txt, .gitkeep, _low_quality.txt ve < 100 byte dosyalar.
+
+def collect_texts(corpus_dir: Path) -> Tuple[str, int]:
+    """data/raw/cs_corpus/ altındaki tüm geçerli *.txt dosyalarını toplar ve temizler.
+
+    Atlanan dosyalar: LICENSE_NOTE.txt, .gitkeep, _low_quality.txt ve temizleme sonrası < 100 karakter dosyalar.
     Dosyalar arasına "\n\n---\n\n" ayırıcı eklenir.
+    Dönen: (merged_text, removed_count)
     """
     logger.info(f"Metin dosyaları taranıyor: {corpus_dir}")
     txt_files = sorted(corpus_dir.rglob("*.txt"))
     collected = []
     skipped_count = 0
+    raw_chars_total = 0
+    cleaned_chars_total = 0
 
     for fpath in txt_files:
         if fpath.name in SKIP_FILES:
@@ -60,18 +72,22 @@ def collect_texts(corpus_dir: Path) -> str:
             if size < 100:
                 skipped_count += 1
                 continue
-            text = fpath.read_text(encoding="utf-8", errors="ignore")
-            if len(text.strip()) >= 50:
-                collected.append(text)
-            else:
+            content = fpath.read_text(encoding="utf-8", errors="ignore")
+            raw_chars_total += len(content)
+            content = clean_text(content)
+            if len(content) < 100:
                 skipped_count += 1
+                continue
+            cleaned_chars_total += len(content)
+            collected.append(content)
         except Exception as e:
             logger.warning(f"Dosya okuma hatası ({fpath}): {e}")
             skipped_count += 1
 
-    logger.info(f"Toplanan metin dosyası sayısı: {len(collected)} (Atlanan: {skipped_count})")
+    removed_count = raw_chars_total - cleaned_chars_total
     merged_text = "\n\n---\n\n".join(collected)
-    return merged_text
+    logger.info(f"Toplanan metin dosyası sayısı: {len(collected)} (Atlanan: {skipped_count})")
+    return merged_text, removed_count
 
 
 def build_charset(text: str, min_freq: int = 50) -> dict:
@@ -179,14 +195,15 @@ def main():
     logger.info("Mergen-SNN — Stage 2 Veri Hazırlama Hattı")
     logger.info("==========================================")
 
-    # 1. Metinleri topla
-    merged_text = collect_texts(CORPUS_DIR)
-    print(f"Toplam karakter: {len(merged_text):,}")
+    # 1. Metinleri topla ve kontrol karakterlerini temizle
+    merged_text, removed_count = collect_texts(CORPUS_DIR)
+    print(f"Atılan kontrol karakteri sayısı: {removed_count:,}")
+    print(f"Temizlik sonrası toplam karakter: {len(merged_text):,}")
 
     # 2. Charset oluştur (min_freq=50, REQUIRED_CHARS garantili, <unk>=0)
     charset = build_charset(merged_text, min_freq=50)
     vocab_size = charset["vocab_size"]
-    print(f"Vocab size: {vocab_size}")
+    print(f"Vocab size (temizlik sonrası): {vocab_size}")
 
     print("\nCharset ilk 20 karakter (id 0-19):")
     for i in range(min(20, vocab_size)):
