@@ -13,6 +13,7 @@ import shutil
 import sys
 import time
 from typing import Dict, Tuple
+import unicodedata
 
 import numpy as np
 
@@ -39,14 +40,42 @@ REQUIRED_CHARS = (
     + "‘’“”–—…«»"
 )
 
+LIGATURE_MAP = {
+    "\ufb00": "ff",
+    "\ufb01": "fi",
+    "\ufb02": "fl",
+    "\ufb03": "ffi",
+    "\ufb04": "ffl",
+    "\u0152": "OE",
+    "\u0153": "oe",
+    "\u00c6": "AE",
+    "\u00e6": "ae",
+}
+
 
 def clean_text(text: str) -> str:
-    """Kontrol karakterlerini at, sadece yazdırılabilir + \t \n \r tut."""
-    allowed_controls = {"\t", "\n", "\r"}
-    return "".join(
-        ch for ch in text
-        if (ord(ch) >= 32 and ord(ch) != 127) or ch in allowed_controls
-    )
+    """Ligatürleri normalize et, non-breaking space dönüştür ve C0/C1 kontrolleri at."""
+    # 1) Ligatürleri normalize et
+    for lig, repl in LIGATURE_MAP.items():
+        text = text.replace(lig, repl)
+
+    # 2) Non-breaking space -> normal boşluk
+    text = text.replace("\xa0", " ")
+
+    # 3) Kontrol karakterlerini at (C0: 0-31, C1: 128-159, DEL: 127)
+    allowed = {"\t", "\n", "\r"}
+    cleaned = []
+    for ch in text:
+        cp = ord(ch)
+        if ch in allowed:
+            cleaned.append(ch)
+        elif cp < 32 or cp == 127:  # C0 + DEL
+            continue
+        elif 128 <= cp <= 159:  # C1
+            continue
+        else:
+            cleaned.append(ch)
+    return "".join(cleaned)
 
 
 def collect_texts(corpus_dir: Path) -> Tuple[str, int]:
