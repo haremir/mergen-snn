@@ -18,6 +18,10 @@ dependencies = [
     "pyyaml",
     "tqdm",
     "matplotlib",
+    "requests",
+    "beautifulsoup4",
+    "lxml",
+    "pypdf",
 ]
 
 [project.optional-dependencies]
