@@ -16,7 +16,9 @@ model:
 training:
   epochs: 1
   learning_rate: 0.001
-  optimizer: adam
+  optimizer: adam        # adam | sgd
+  foreach: false         # DirectML: lerp CPU fallback'ini önler
+  momentum: 0.9          # sadece sgd için
 
 encoding:
   type: poisson

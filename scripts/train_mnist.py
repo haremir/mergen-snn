@@ -88,7 +88,18 @@ def main():
     )
 
     # 4. Optimizatör
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer_name = cfg.get("training", {}).get("optimizer", "adam").lower()
+    foreach_opt = cfg.get("training", {}).get("foreach", False)
+    momentum_opt = float(cfg.get("training", {}).get("momentum", 0.9))
+
+    if optimizer_name == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr, foreach=foreach_opt)
+    elif optimizer_name == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr * 10, momentum=momentum_opt, foreach=foreach_opt)
+    else:
+        raise ValueError(f"Bilinmeyen optimizer: {optimizer_name}")
+
+    logger.info(f"Optimizer: {optimizer_name} (foreach={foreach_opt})")
 
     train_losses, train_accs = [], []
     test_losses, test_accs = [], []
