@@ -41,11 +41,11 @@ def test_dataset_shapes():
 
 
 def test_turkish_chars():
-    """Kullanıcı kuralı: charset'te 'ş' ve 'ğ' varsa skip, yoksa fail."""
+    """Türkçe karakterler (çÇğĞıİöÖşŞüÜ) ve <unk> tokeni her zaman charset'te bulunmalıdır."""
     assert CHARSET_PATH.exists(), f"charset.json bulunamadı: {CHARSET_PATH}"
     stoi, _ = load_charset(CHARSET_PATH)
 
-    if "ş" in stoi and "ğ" in stoi:
-        pytest.skip("Türkçe karakterler ('ş', 'ğ') charset'te mevcut ✓ (skip).")
-    else:
-        pytest.fail(f"Türkçe karakterler charset'te eksik ('ş' in stoi: {'ş' in stoi}, 'ğ' in stoi: {'ğ' in stoi})")
+    required_turkish = "çÇğĞıİöÖşŞüÜ"
+    missing = [ch for ch in required_turkish if ch not in stoi]
+    assert not missing, f"Türkçe karakterler eksik: {missing}"
+    assert "<unk>" in stoi, "<unk> token yok"

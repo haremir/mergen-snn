@@ -1,15 +1,17 @@
 """Mergen-SNN — Stage 2 Veri Hazırlama Hattı (Char-level Dil Modeli).
 
-data/raw/cs_corpus altındaki metinleri toplar, karakter setini (charset.json)
-çıkarır, metni uint16 token dizisine dönüştürür ve train.bin / val.bin olarak kaydeder.
+data/raw/cs_corpus altındaki metinleri toplar, REQUIRED_CHARS (ASCII + Türkçe +
+temel noktalama) ve min_freq>=50 karakterlerle kompakt bir charset oluşturur,
+<unk> (id=0) mekanizmasını entegre eder, metni uint16 token dizisine dönüştürür
+ve train.bin / val.bin olarak kaydeder.
 """
 
+from collections import Counter
 import json
 from pathlib import Path
 import shutil
 import sys
 import time
-from collections import Counter
 from typing import Dict, Tuple
 
 import numpy as np
@@ -27,9 +29,19 @@ OUT_DIR = Path("data/processed")
 TOKENIZER_DIR = Path("data/raw/tokenizers")
 SKIP_FILES = {"LICENSE_NOTE.txt", ".gitkeep", "_low_quality.txt"}
 
+# Frekansa bakılmaksızın her zaman charset'te yer alacak zorunlu karakterler
+REQUIRED_CHARS = (
+    # ASCII printable (95 karakter, kod 32-126)
+    "".join(chr(i) for i in range(32, 127))
+    # Türkçe (12 karakter)
+    + "çÇğĞıİöÖşŞüÜ"
+    # Temel noktalama (ASCII dışı ama yaygın)
+    + "‘’“”–—…«»"
+)
+
 
 def collect_texts(corpus_dir: Path) -> str:
-    """data/raw/cs_corpus/ altındaki tüm *.txt dosyalarını toplar.
+    """data/raw/cs_corpus/ altındaki tüm geçerli *.txt dosyalarını toplar.
 
     Atlanan dosyalar: LICENSE_NOTE.txt, .gitkeep, _low_quality.txt ve < 100 byte dosyalar.
     Dosyalar arasına "\n\n---\n\n" ayırıcı eklenir.
@@ -62,32 +74,53 @@ def collect_texts(corpus_dir: Path) -> str:
     return merged_text
 
 
-def build_charset(text: str, min_freq: int = 5) -> dict:
-    """Karakter frekanslarını sayar ve min_freq eşiğini geçen sıralı karakter kümesini oluşturur."""
+def build_charset(text: str, min_freq: int = 50) -> dict:
+    """Karakter frekanslarını sayar; REQUIRED_CHARS ve min_freq eşiğini geçen karakterlerle charset oluşturur.
+
+    <unk> tokeni id=0 olarak başa eklenir.
+    """
     logger.info(f"Karakter seti inşa ediliyor (min_freq={min_freq})...")
-    counts = Counter(text)
-    filtered_chars = [ch for ch, cnt in counts.items() if cnt >= min_freq]
-    chars = sorted(filtered_chars)
-    vocab_size = len(chars)
+    counter = Counter(text)
+    chars = set()
 
-    stoi = {ch: i for i, ch in enumerate(chars)}
-    itos = {i: ch for i, ch in enumerate(chars)}
-    freq = {ch: counts[ch] for ch in chars}
+    # 1. Frekansa bakılmaksızın zorunlu karakterleri ekle
+    for ch in REQUIRED_CHARS:
+        chars.add(ch)
 
-    logger.info(f"Vocab size: {vocab_size} (Frekansı < {min_freq} olan atılan nadir karakter sayısı: {len(counts) - vocab_size})")
+    # 2. Frekansı min_freq ve üzeri olan karakterleri ekle (ör. \n, \t)
+    for ch, count in counter.items():
+        if count >= min_freq:
+            chars.add(ch)
+
+    # 3. Sırala ve <unk> başa ekle
+    sorted_chars = sorted(chars)
+    final_chars = ["<unk>"] + sorted_chars
+
+    # 4. stoi ve itos haritaları
+    stoi = {"<unk>": 0}
+    for i, ch in enumerate(sorted_chars):
+        stoi[ch] = i + 1
+
+    itos = {i: ch for ch, i in stoi.items()}
+
+    logger.info(
+        f"Vocab size: {len(final_chars)} (Zorunlu karakter: {len(REQUIRED_CHARS)}, "
+        f"min_freq>={min_freq} eklenen: {len(sorted_chars) - len(REQUIRED_CHARS)}, <unk>: 1)"
+    )
     return {
-        "chars": chars,
+        "chars": final_chars,
         "stoi": stoi,
         "itos": itos,
-        "vocab_size": vocab_size,
-        "freq": freq,
+        "vocab_size": len(final_chars),
+        "freq": dict(counter),
     }
 
 
 def split_and_save(text: str, charset: dict, out_dir: Path, train_ratio: float = 0.9):
-    """Metni karakter indekslerine çevirir, %90 train / %10 val olarak böler ve diske kaydeder."""
+    """Metni karakter indekslerine çevirir (<unk> eşlemesiyle), %90 train / %10 val olarak böler ve diske kaydeder."""
     stoi = charset["stoi"]
     vocab_size = charset["vocab_size"]
+    unk_id = stoi.get("<unk>", 0)
     out_dir.mkdir(parents=True, exist_ok=True)
     TOKENIZER_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -98,10 +131,21 @@ def split_and_save(text: str, charset: dict, out_dir: Path, train_ratio: float =
         logger.warning(f"Vocab size ({vocab_size}) >= 65536, uint32 kullanılıyor.")
         dtype = np.uint32
 
-    logger.info("Metin token indekslerine kodlanıyor...")
-    encoded = [stoi[ch] for ch in text if ch in stoi]
+    logger.info("Metin token indekslerine kodlanıyor (<unk> fallback ile)...")
+    unk_count = 0
+    encoded = []
+    for ch in text:
+        if ch in stoi:
+            encoded.append(stoi[ch])
+        else:
+            encoded.append(unk_id)
+            unk_count += 1
+
     tokens_arr = np.array(encoded, dtype=dtype)
     total_tokens = len(tokens_arr)
+    unk_ratio = (unk_count / total_tokens) * 100 if total_tokens > 0 else 0.0
+
+    print(f"<unk> token sayısı: {unk_count:,} / {total_tokens:,} (oran: %{unk_ratio:.4f})")
 
     split_idx = int(total_tokens * train_ratio)
     train_arr = tokens_arr[:split_idx]
@@ -139,10 +183,15 @@ def main():
     merged_text = collect_texts(CORPUS_DIR)
     print(f"Toplam karakter: {len(merged_text):,}")
 
-    # 2. Charset oluştur
-    charset = build_charset(merged_text, min_freq=5)
+    # 2. Charset oluştur (min_freq=50, REQUIRED_CHARS garantili, <unk>=0)
+    charset = build_charset(merged_text, min_freq=50)
     vocab_size = charset["vocab_size"]
     print(f"Vocab size: {vocab_size}")
+
+    print("\nCharset ilk 20 karakter (id 0-19):")
+    for i in range(min(20, vocab_size)):
+        ch = charset["chars"][i]
+        print(f"  id {i:>2}: {repr(ch)}")
 
     # En sık 20 karakter
     top20 = Counter(charset["freq"]).most_common(20)

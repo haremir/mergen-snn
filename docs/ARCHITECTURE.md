@@ -63,14 +63,16 @@ Rate Loss (Cross Entropy) & Rate Accuracy
 Aşama 2 için 92.03 MB'lık 16 kategorili Bilgisayar Bilimleri (CS) korpusu karakter düzeyinde işlenmiş ve model eğitimine hazır hale getirilmiştir:
 
 ### 4.1. Karakter Kümesi Formatı (`charset.json`)
-- **Filtreleme Eşiği:** `min_freq = 5` (nadir sembol ve matematik işaretleri ayıklanır).
-- **Kelime Dağarcığı (Vocab Size):** 736 karakter.
+- **Filtreleme Eşiği:** `min_freq = 50` (nadir sembol ve matematik işaretleri ayıklanır).
+- **Zorunlu Karakterler (`REQUIRED_CHARS`):** ASCII yazdırılabilir karakterler (32-126), 12 Türkçe karakter (`çÇğĞıİöÖşŞüÜ`) ve yaygın noktalama işaretleri (`‘’“”–—…«»`) frekansa bakılmaksızın her zaman sözlükte yer alır.
+- **Bilinmeyen Karakter Tokeni (`<unk>`):** Sözlüğün ilk elemanı olarak `id = 0` değerine atanmıştır. Bilinmeyen veya sözlük dışı karakterler `encode()` sırasında `<unk>` (0) indeksine eşlenir.
+- **Kelime Dağarcığı (Vocab Size):** 530 karakter (126 zorunlu + min_freq>=50 eklenen 413 + 1 `<unk>`).
 - **Şema:**
-  - `chars`: Alfabetik sıralı karakter listesi.
+  - `chars`: Alfabetik sıralı karakter listesi (`<unk>` başta).
   - `stoi`: Karakterden tamsayı indeksine eşleme (`{char: int}`).
   - `itos`: İndeksten karaktere eşleme (`{int: char}`).
   - `freq`: Karakter frekans istatistikleri.
-- **Konumlar:** `data/processed/charset.json` ve `data/raw/tokenizers/charset.json`.
+- **Konumlar:** `data/processed/charset.json` ve `data/raw/tokenizers/charset.json` (eski v1 yedeği: `charset_v1.json.bak`).
 
 ### 4.2. İkili Token Depolama Formatı (`train.bin` ve `val.bin`)
 - **Veri Tipi:** `np.uint16` (`vocab_size < 65,536` olduğu için bellek ve disk tasarrufu sağlar; 2 bayt/token).

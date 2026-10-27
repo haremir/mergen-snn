@@ -61,15 +61,15 @@ def main():
     else:
         print("Roundtrip Testi: UYARI / FARK (Bazı karakterler charset'te eksik)")
 
-    # 6. Türkçe Karakter Kontrolü
-    tr_chars = ["ç", "ğ", "ı", "İ", "ö", "ş", "ü"]
+    # 6. Türkçe Karakter Kontrolü (çÇğĞıİöÖşŞüÜ)
+    tr_chars = "çÇğĞıİöÖşŞüÜ"
     missing_tr = [c for c in tr_chars if c not in stoi]
     present_tr = [c for c in tr_chars if c in stoi]
 
     if not missing_tr:
-        print("Türkçe karakterler charset'te mevcut ✓")
+        print(f"Türkçe karakterlerin tamamı ({len(present_tr)}/12) charset'te mevcut ✓ (çÇğĞıİöÖşŞüÜ)")
     else:
-        print(f"UYARI: Türkçe karakterler charset'te yok! (Mevcut: {present_tr}, Eksik: {missing_tr})")
+        raise ValueError(f"HATA: Türkçe karakterler charset'te eksik! Eksik: {missing_tr}")
 
 
 if __name__ == "__main__":

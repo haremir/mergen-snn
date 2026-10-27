@@ -40,14 +40,16 @@ def load_charset(path: Union[str, Path]) -> Tuple[Dict[str, int], Dict[int, str]
 
 
 def encode(text: str, stoi: Dict[str, int]) -> List[int]:
-    """Metni stoi eşlemesine göre tamsayı indeks listesine çevirir."""
-    return [stoi[ch] for ch in text if ch in stoi]
+    """Metni stoi eşlemesine göre tamsayı indeks listesine çevirir. Bilinmeyen karakterler <unk> (id=0) olur."""
+    unk_id = stoi.get("<unk>", 0)
+    return [stoi.get(ch, unk_id) for ch in text]
 
 
-def decode(ids: Union[List[int], torch.Tensor, np.ndarray], itos: Dict[int, str]) -> str:
+def decode(ids: Union[List[int], torch.Tensor, np.ndarray], itos: Dict[Union[int, str], str]) -> str:
     """Tamsayı indeks listesini veya tensorunu itos ile karaktere çevirir."""
+    itos_int = {int(k) if isinstance(k, str) else k: v for k, v in itos.items()}
     if isinstance(ids, torch.Tensor):
         ids = ids.detach().cpu().tolist()
     elif isinstance(ids, np.ndarray):
         ids = ids.tolist()
-    return "".join(itos.get(int(i), "") for i in ids)
+    return "".join(itos_int.get(int(i), "?") for i in ids)
