@@ -43,6 +43,7 @@ LICENSE_NOTES = {
     "c_docs": "ISO C Standards Draft (WG14) and GNU C Reference Manual.",
     "cpp_docs": "ISO C++ Standards Draft (WG21 - Standard for Programming Language C++).",
     "cython_docs": "Apache-2.0 (Cython project).",
+    "gc_papers": "Curated academic papers on automatic memory management and garbage collection (PWL / open access).",
     "architecture_local": "Copyrighted textbooks (Patterson & Hennessy). Local copy provided by user for personal research.",
 }
 
@@ -65,6 +66,9 @@ DIRECT_PDF_SOURCES = {
         ("foundations_of_computation.pdf", "https://math.hws.edu/FoundationsOfComputation/FoundationsOfComputation_2.3.2_8.5x11.pdf"),
         ("mit_mcs.pdf", "https://courses.csail.mit.edu/6.042/spring18/mcs.pdf"),
         ("theory_of_computing_arxiv.pdf", "https://arxiv.org/pdf/2010.10239.pdf"),
+        ("arora_barak_complexity.pdf", "https://theory.cs.princeton.edu/complexity/book.pdf"),
+        ("smid_theory_of_computation.pdf", "https://cglab.ca/~michiel/TheoryOfComputation/TheoryOfComputation.pdf"),
+        ("savage_models_of_computation.pdf", "https://cs.brown.edu/people/jsavage/book/pdfs/ModelsOfComputation.pdf"),
         ("theory_of_computing_stfx.pdf", "https://people.stfx.ca/tasmith/theory/TheoryOfComputing.pdf"),
     ],
     "compilers": [
@@ -84,6 +88,7 @@ DIRECT_PDF_SOURCES = {
         ("cpp23_standard_draft_n4950.pdf", "https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/n4950.pdf"),
         ("cpp20_standard_draft_n4861.pdf", "https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/n4861.pdf"),
         ("cpp17_standard_draft_n4659.pdf", "https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf"),
+        ("cpp11_standard_draft_n3337.pdf", "https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3337.pdf"),
     ],
     "databases": [
         ("postgresql_16_documentation.pdf", "https://www.postgresql.org/files/documentation/pdf/16/postgresql-16-A4.pdf"),
@@ -92,9 +97,14 @@ DIRECT_PDF_SOURCES = {
         ("sqlite_fileformat.html", "https://www.sqlite.org/fileformat2.html"),
     ],
     "c_docs": [
+        ("c23_standard_draft_n3096.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3096.pdf"),
         ("c17_standard_n2310.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2310.pdf"),
         ("c11_standard_n1570.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf"),
         ("c99_standard_n1256.pdf", "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf"),
+    ],
+    "gc_papers": [
+        ("ungar_generation_scavenging.pdf", "https://people.cs.umass.edu/~emery/classes/cmpsci691s-fall2004/papers/p157-ungar.pdf"),
+        ("immix_pldi_2008.pdf", "https://users.cecs.anu.edu.au/~steveb/pubs/papers/immix-pldi-2008.pdf"),
     ],
     "algorithms": [
         ("algorithms_jeffe.pdf", "https://jeffe.cs.illinois.edu/teaching/algorithms/book/Algorithms-JeffE.pdf"),
@@ -137,13 +147,31 @@ DIRECT_PDF_SOURCES = {
     ],
     "networking": [
         ("rfc793_tcp.txt", "https://www.rfc-editor.org/rfc/rfc793.txt"),
+        ("rfc768_udp.txt", "https://www.rfc-editor.org/rfc/rfc768.txt"),
         ("rfc791_ip.txt", "https://www.rfc-editor.org/rfc/rfc791.txt"),
-        ("rfc2616_http.txt", "https://www.rfc-editor.org/rfc/rfc2616.txt"),
+        ("rfc8200_ipv6.txt", "https://www.rfc-editor.org/rfc/rfc8200.txt"),
+        ("rfc1034_dns_concepts.txt", "https://www.rfc-editor.org/rfc/rfc1034.txt"),
         ("rfc1035_dns.txt", "https://www.rfc-editor.org/rfc/rfc1035.txt"),
-        ("rfc8446_tls13.txt", "https://www.rfc-editor.org/rfc/rfc8446.txt"),
-        ("rfc5246_tls12.txt", "https://www.rfc-editor.org/rfc/rfc5246.txt"),
+        ("rfc2616_http.txt", "https://www.rfc-editor.org/rfc/rfc2616.txt"),
         ("rfc7230_http11.txt", "https://www.rfc-editor.org/rfc/rfc7230.txt"),
         ("rfc7231_http_semantics.txt", "https://www.rfc-editor.org/rfc/rfc7231.txt"),
+        ("rfc7232_http_conditional.txt", "https://www.rfc-editor.org/rfc/rfc7232.txt"),
+        ("rfc7233_http_range.txt", "https://www.rfc-editor.org/rfc/rfc7233.txt"),
+        ("rfc7234_http_caching.txt", "https://www.rfc-editor.org/rfc/rfc7234.txt"),
+        ("rfc7235_http_auth.txt", "https://www.rfc-editor.org/rfc/rfc7235.txt"),
+        ("rfc9110_http_semantics.txt", "https://www.rfc-editor.org/rfc/rfc9110.txt"),
+        ("rfc9111_http_caching.txt", "https://www.rfc-editor.org/rfc/rfc9111.txt"),
+        ("rfc9112_http11.txt", "https://www.rfc-editor.org/rfc/rfc9112.txt"),
+        ("rfc9113_http2.txt", "https://www.rfc-editor.org/rfc/rfc9113.txt"),
+        ("rfc9114_http3.txt", "https://www.rfc-editor.org/rfc/rfc9114.txt"),
+        ("rfc9000_quic.txt", "https://www.rfc-editor.org/rfc/rfc9000.txt"),
+        ("rfc2328_ospfv2.txt", "https://www.rfc-editor.org/rfc/rfc2328.txt"),
+        ("rfc2131_dhcp.txt", "https://www.rfc-editor.org/rfc/rfc2131.txt"),
+        ("rfc6455_websocket.txt", "https://www.rfc-editor.org/rfc/rfc6455.txt"),
+        ("rfc792_icmp.txt", "https://www.rfc-editor.org/rfc/rfc792.txt"),
+        ("rfc4253_ssh_transport.txt", "https://www.rfc-editor.org/rfc/rfc4253.txt"),
+        ("rfc8446_tls13.txt", "https://www.rfc-editor.org/rfc/rfc8446.txt"),
+        ("rfc5246_tls12.txt", "https://www.rfc-editor.org/rfc/rfc5246.txt"),
         ("rfc4271_bgp.txt", "https://www.rfc-editor.org/rfc/rfc4271.txt"),
     ],
 }
@@ -358,11 +386,53 @@ def extract_text_from_pdf(pdf_path: Path) -> bool:
         return False
 
 
+def check_pdf_quality(pdf_path: Path, low_quality_list: List[Dict]):
+    """Ham PDF boyutu ile çıkarılan TXT boyutunu oranlar. Oran < %2 ise konsola yazar ve listeye ekler."""
+    txt_path = pdf_path.with_suffix(".txt")
+    if not pdf_path.exists() or not txt_path.exists():
+        return
+    raw_size = pdf_path.stat().st_size
+    txt_size = txt_path.stat().st_size
+    if raw_size <= 0:
+        return
+    ratio = (txt_size / raw_size) * 100.0
+    if ratio < 2.0:
+        try:
+            rel_path = str(pdf_path.relative_to(BASE_DIR)).replace("\\", "/")
+        except Exception:
+            rel_path = pdf_path.name
+        print(f"[DÜŞÜK KALİTE] {rel_path}: ham={format_size(raw_size)}, txt={format_size(txt_size)} (oran: %{ratio:.2f})")
+        low_quality_list.append({
+            "path": rel_path,
+            "raw_size": raw_size,
+            "txt_size": txt_size,
+            "ratio": ratio
+        })
+
+
+def save_low_quality_report(low_quality_list: List[Dict]):
+    """Düşük kaliteli PDF listesini data/raw/cs_corpus/_low_quality.txt dosyasına kaydeder."""
+    out_path = BASE_DIR / "_low_quality.txt"
+    seen = set()
+    unique_items = []
+    for item in low_quality_list:
+        if item["path"] not in seen:
+            seen.add(item["path"])
+            unique_items.append(item)
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("# Mergen-SNN Korpus Kalite Denetimi: Metin Oranı < %2 Olan PDF Kaynakları\n")
+        f.write("# Format: {dosya_yolu} | Ham Boyut | TXT Boyut | Metin Oranı\n\n")
+        for item in sorted(unique_items, key=lambda x: x["ratio"]):
+            f.write(f"{item['path']} | ham={format_size(item['raw_size'])} | txt={format_size(item['txt_size'])} | oran=%{item['ratio']:.2f}\n")
+    logger.info(f"Düşük kaliteli PDF listesi yazıldı: {out_path} ({len(unique_items)} adet)")
+
+
 # ==============================================================================
 # 3. İndirme ve İşleme Motoru
 # ==============================================================================
 
-def process_direct_files(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict):
+def process_direct_files(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict, low_quality_list: List[Dict]):
     """Doğrudan PDF ve TXT/HTML dosyalarını akıllı indirme motoruyla indirir."""
     logger.info(">>> Doğrudan Dosyalar (PDF & TXT & HTML) Akıllı İndiriciyle İşleniyor...")
     for cat_name, file_list in DIRECT_PDF_SOURCES.items():
@@ -392,11 +462,12 @@ def process_direct_files(session: requests.Session, skip_list: List[Dict], pdf_s
                 pdf_stats["total"] += 1
                 if extract_text_from_pdf(dest_file):
                     pdf_stats["success"] += 1
+                check_pdf_quality(dest_file, low_quality_list)
             elif ext == ".html":
                 extract_text_from_html(dest_file)
 
 
-def process_hailperin_os(pdf_stats: Dict):
+def process_hailperin_os(pdf_stats: Dict, low_quality_list: List[Dict]):
     """Max Hailperin OS kitabını resmi GitHub reposundan çekip sistem kategorisine ekler."""
     logger.info(">>> Hailperin OS GitHub Reposu İşleniyor...")
     sys_dir = BASE_DIR / "systems"
@@ -408,6 +479,7 @@ def process_hailperin_os(pdf_stats: Dict):
         pdf_stats["total"] += 1
         if extract_text_from_pdf(dest_file):
             pdf_stats["success"] += 1
+        check_pdf_quality(dest_file, low_quality_list)
         return
 
     repo_url = "https://github.com/Max-Hailperin/Operating-Systems-and-Middleware--Supporting-Controlled-Interaction.git"
@@ -436,6 +508,7 @@ def process_hailperin_os(pdf_stats: Dict):
             pdf_stats["total"] += 1
             if extract_text_from_pdf(dest_file):
                 pdf_stats["success"] += 1
+            check_pdf_quality(dest_file, low_quality_list)
         else:
             print(f"[SKIP] systems/{repo_url} (Repo içinde kitap PDF'i bulunamadı)")
     except Exception as e:
@@ -444,7 +517,7 @@ def process_hailperin_os(pdf_stats: Dict):
         shutil.rmtree(temp_dir, onerror=remove_readonly)
 
 
-def process_mit_6006_lectures(session: requests.Session, pdf_stats: Dict):
+def process_mit_6006_lectures(session: requests.Session, pdf_stats: Dict, low_quality_list: List[Dict]):
     """MIT 6.006 Algoritmalar ders notlarını (lec01 - lec24) indirir."""
     logger.info(">>> MIT 6.006 Algoritmalar Ders Notları (lec01 - lec24) İndiriliyor...")
     lec_dir = BASE_DIR / "lecture_notes" / "mit_6006"
@@ -463,6 +536,7 @@ def process_mit_6006_lectures(session: requests.Session, pdf_stats: Dict):
             if extract_text_from_pdf(dest_file):
                 pdf_stats["success"] += 1
             success_count += 1
+            check_pdf_quality(dest_file, low_quality_list)
         else:
             ok, final_url = smart_download(session, url, dest_file, timeout=40)
             if ok:
@@ -471,13 +545,14 @@ def process_mit_6006_lectures(session: requests.Session, pdf_stats: Dict):
                 if extract_text_from_pdf(dest_file):
                     pdf_stats["success"] += 1
                 success_count += 1
+                check_pdf_quality(dest_file, low_quality_list)
             else:
                 print(f"[SKIP] lecture_notes/mit_6006/{fname} (İndirilemedi)")
 
     logger.info(f"MIT 6.006: {success_count}/24 ders slaytı başarıyla işlendi.")
 
 
-def process_architecture_open_access(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict):
+def process_architecture_open_access(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict, low_quality_list: List[Dict]):
     """Açık erişimli mimari kaynaklarını (IIT Delhi ve Rowan OER) dener."""
     logger.info(">>> Açık Erişim Mimari Kaynakları (IIT Delhi & Rowan) Denetleniyor...")
     arch_dir = BASE_DIR / "architecture"
@@ -501,8 +576,8 @@ def process_architecture_open_access(session: requests.Session, skip_list: List[
                             pdf_stats["total"] += 1
                             if extract_text_from_pdf(fdest):
                                 pdf_stats["success"] += 1
+                            check_pdf_quality(fdest, low_quality_list)
         else:
-            # Alternatif GitHub Pages kopyası zaten DIRECT_PDF_SOURCES'da mevcut (sarangi_adv_architecture.pdf)
             reason = f"HTTP {resp.status_code} Forbidden (Sarangi GitHub ayna kitabı kullanıldı)"
             print(f"[SKIP] architecture/{iit_url} ({reason})")
             skip_list.append({"category": "architecture", "url": iit_url, "reason": reason})
@@ -515,6 +590,7 @@ def process_architecture_open_access(session: requests.Session, skip_list: List[
     fdest_rowan = arch_dir / "rowan_computer_organization.pdf"
     if fdest_rowan.exists() and fdest_rowan.stat().st_size > 1024:
         print(f"[OK] architecture/{fdest_rowan.name} ({format_size(fdest_rowan.stat().st_size)}) [Önbellek]")
+        check_pdf_quality(fdest_rowan, low_quality_list)
     else:
         try:
             resp = session.get(rowan_url, timeout=20, stream=True, headers=RETRY_HEADERS)
@@ -527,14 +603,409 @@ def process_architecture_open_access(session: requests.Session, skip_list: List[
                 pdf_stats["total"] += 1
                 if extract_text_from_pdf(fdest_rowan):
                     pdf_stats["success"] += 1
+                check_pdf_quality(fdest_rowan, low_quality_list)
             else:
-                # ARM alternatifi zaten DIRECT_PDF_SOURCES'ta eklendi (armv8a_architecture_manual.pdf)
                 reason = f"HTTP {resp.status_code} (Rowan Bot-Defense; ARMv8-A resmi kılavuzu kullanıldı)"
                 print(f"[SKIP] architecture/{rowan_url} ({reason})")
                 skip_list.append({"category": "architecture", "url": rowan_url, "reason": reason})
         except Exception as e:
             print(f"[SKIP] architecture/{rowan_url} ({e})")
             skip_list.append({"category": "architecture", "url": rowan_url, "reason": str(e)})
+
+
+def process_gc_papers(pdf_stats: Dict, low_quality_list: List[Dict]):
+    """SORUN 1: Papers We Love reposundaki garbage_collection klasörünü gc_papers'a aktarır."""
+    logger.info(">>> Garbage Collection (gc_papers) Makaleleri İşleniyor...")
+    gc_dir = BASE_DIR / "gc_papers"
+    gc_dir.mkdir(parents=True, exist_ok=True)
+    write_license_note(gc_dir, "gc_papers")
+
+    # 1. Önce yerel papers_we_love/garbage_collection/ klasöründen kopyala (varsa)
+    pwl_gc = BASE_DIR / "papers_we_love" / "garbage_collection"
+    if pwl_gc.exists():
+        for f in pwl_gc.glob("*.pdf"):
+            dest = gc_dir / f.name
+            if not dest.exists():
+                shutil.copy2(f, dest)
+
+    # 2. Hala PDF yoksa veya azsa GitHub'dan klonla
+    existing_pdfs = list(gc_dir.glob("*.pdf"))
+    if len(existing_pdfs) < 3:
+        temp_dir = tempfile.mkdtemp(prefix="pwl_gc_")
+        try:
+            repo_url = "https://github.com/papers-we-love/papers-we-love.git"
+            subprocess.run(
+                ["git", "clone", "--depth", "1", repo_url, temp_dir],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=180,
+            )
+            src_gc = Path(temp_dir) / "garbage_collection"
+            if src_gc.exists():
+                for f in src_gc.glob("*.pdf"):
+                    dest = gc_dir / f.name
+                    if not dest.exists():
+                        shutil.copy2(f, dest)
+            else:
+                # ls-tree ile ara
+                res = subprocess.run(["git", "-C", temp_dir, "ls-tree", "-r", "HEAD", "--name-only"], capture_output=True, text=True)
+                for line in res.stdout.splitlines():
+                    if "garbage" in line.lower() and line.lower().endswith(".pdf"):
+                        src_f = Path(temp_dir) / line
+                        dest = gc_dir / src_f.name
+                        if not dest.exists():
+                            shutil.copy2(src_f, dest)
+        except Exception as e:
+            logger.warning(f"PWL gc_papers klonlama hatası: {e}")
+        finally:
+            shutil.rmtree(temp_dir, onerror=remove_readonly)
+
+    # 3. Metin çıkarma ve kalite denetimi
+    for pdf_file in sorted(gc_dir.glob("*.pdf")):
+        pdf_stats["total"] += 1
+        txt_path = pdf_file.with_suffix(".txt")
+        if txt_path.exists() and txt_path.stat().st_size > 0:
+            print(f"[OK] gc_papers/{pdf_file.name} ({format_size(pdf_file.stat().st_size)}) [Önbellek]")
+            pdf_stats["success"] += 1
+        else:
+            if extract_text_from_pdf(pdf_file):
+                pdf_stats["success"] += 1
+                print(f"[OK] gc_papers/{pdf_file.name} ({format_size(pdf_file.stat().st_size)})")
+            else:
+                print(f"[UYARI] gc_papers/{pdf_file.name} metin çıkarılamadı")
+        check_pdf_quality(pdf_file, low_quality_list)
+
+
+def process_lecture_notes_expansion(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict, low_quality_list: List[Dict]):
+    """SORUN 2: Kleinberg-Tardos, Stanford CS161 ve Roughgarden ders notlarını indirir."""
+    logger.info(">>> Metin Tabanlı Ders Notları (Kleinberg-Tardos, Stanford CS161, Roughgarden) İşleniyor...")
+
+    # 1. Kleinberg & Tardos - Algorithm Design Ders Notları
+    kt_dir = BASE_DIR / "lecture_notes" / "kleinberg_tardos"
+    kt_dir.mkdir(parents=True, exist_ok=True)
+    kt_url = "https://www.cs.princeton.edu/~wayne/kleinberg-tardos/"
+    try:
+        r = session.get(kt_url, timeout=20, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "lxml")
+            pdf_links = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.lower().endswith(".pdf") and "pdf/" in href.lower():
+                    pdf_links.add(urljoin(kt_url, href))
+
+            for purl in sorted(pdf_links):
+                fname = os.path.basename(urlparse(purl).path)
+                dest = kt_dir / fname
+                if dest.exists() and dest.stat().st_size > 1024:
+                    print(f"[OK] lecture_notes/kleinberg_tardos/{fname} ({format_size(dest.stat().st_size)}) [Önbellek]")
+                    pdf_stats["total"] += 1
+                    if extract_text_from_pdf(dest):
+                        pdf_stats["success"] += 1
+                else:
+                    ok, _ = smart_download(session, purl, dest, timeout=40)
+                    if ok:
+                        print(f"[OK] lecture_notes/kleinberg_tardos/{fname} ({format_size(dest.stat().st_size)})")
+                        pdf_stats["total"] += 1
+                        if extract_text_from_pdf(dest):
+                            pdf_stats["success"] += 1
+                    else:
+                        print(f"[SKIP] lecture_notes/kleinberg_tardos/{fname} (İndirilemedi)")
+                        skip_list.append({"category": "lecture_notes", "url": purl, "reason": "KT 404/fail"})
+                check_pdf_quality(dest, low_quality_list)
+        else:
+            print(f"[SKIP] lecture_notes/{kt_url} (HTTP {r.status_code})")
+            skip_list.append({"category": "lecture_notes", "url": kt_url, "reason": f"HTTP {r.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] lecture_notes/{kt_url} ({e})")
+        skip_list.append({"category": "lecture_notes", "url": kt_url, "reason": str(e)})
+
+    # 2. Stanford CS161 - Design and Analysis of Algorithms
+    st_dir = BASE_DIR / "lecture_notes" / "stanford_cs161"
+    st_dir.mkdir(parents=True, exist_ok=True)
+    st_url = "https://web.stanford.edu/class/archive/cs/cs161/cs161.1168/"
+    try:
+        r = session.get(st_url, timeout=20, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "lxml")
+            s_links = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.lower().endswith(".pdf") and "lecture" in href.lower():
+                    s_links.add(urljoin(st_url, href))
+
+            for purl in sorted(s_links):
+                fname = os.path.basename(urlparse(purl).path)
+                dest = st_dir / fname
+                if dest.exists() and dest.stat().st_size > 1024:
+                    print(f"[OK] lecture_notes/stanford_cs161/{fname} ({format_size(dest.stat().st_size)}) [Önbellek]")
+                    pdf_stats["total"] += 1
+                    if extract_text_from_pdf(dest):
+                        pdf_stats["success"] += 1
+                else:
+                    ok, _ = smart_download(session, purl, dest, timeout=40)
+                    if ok:
+                        print(f"[OK] lecture_notes/stanford_cs161/{fname} ({format_size(dest.stat().st_size)})")
+                        pdf_stats["total"] += 1
+                        if extract_text_from_pdf(dest):
+                            pdf_stats["success"] += 1
+                    else:
+                        print(f"[SKIP] lecture_notes/stanford_cs161/{fname} (İndirilemedi)")
+                        skip_list.append({"category": "lecture_notes", "url": purl, "reason": "Stanford CS161 fail"})
+                check_pdf_quality(dest, low_quality_list)
+        else:
+            print(f"[SKIP] lecture_notes/{st_url} (HTTP {r.status_code})")
+            skip_list.append({"category": "lecture_notes", "url": st_url, "reason": f"HTTP {r.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] lecture_notes/{st_url} ({e})")
+        skip_list.append({"category": "lecture_notes", "url": st_url, "reason": str(e)})
+
+    # 3. Tim Roughgarden - Algoritmik Ders Notları (tüm açık ders notları)
+    rg_dir = BASE_DIR / "lecture_notes" / "roughgarden"
+    rg_dir.mkdir(parents=True, exist_ok=True)
+    rg_url = "https://timroughgarden.org/notes.html"
+    try:
+        r = session.get(rg_url, timeout=20, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "lxml")
+            rg_links = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.lower().endswith(".pdf") and ("/l/" in href.lower() or any(k in href.lower() for k in ["fob", "cs168", "cs261", "cs264", "wca", "algo"])):
+                    rg_links.add(urljoin(rg_url, href))
+
+            for purl in sorted(rg_links):
+                parsed = urlparse(purl)
+                sub_name = parsed.path.strip("/").replace("/", "_")
+                fname = sub_name if sub_name.endswith(".pdf") else f"{os.path.basename(parsed.path)}"
+                dest = rg_dir / fname
+                if dest.exists() and dest.stat().st_size > 1024:
+                    print(f"[OK] lecture_notes/roughgarden/{fname} ({format_size(dest.stat().st_size)}) [Önbellek]")
+                    pdf_stats["total"] += 1
+                    if extract_text_from_pdf(dest):
+                        pdf_stats["success"] += 1
+                else:
+                    ok, _ = smart_download(session, purl, dest, timeout=40)
+                    if ok:
+                        print(f"[OK] lecture_notes/roughgarden/{fname} ({format_size(dest.stat().st_size)})")
+                        pdf_stats["total"] += 1
+                        if extract_text_from_pdf(dest):
+                            pdf_stats["success"] += 1
+                    else:
+                        print(f"[SKIP] lecture_notes/roughgarden/{fname} (İndirilemedi)")
+                        skip_list.append({"category": "lecture_notes", "url": purl, "reason": "Roughgarden fail"})
+                check_pdf_quality(dest, low_quality_list)
+    except Exception as e:
+        print(f"[SKIP] lecture_notes/{rg_url} ({e})")
+        skip_list.append({"category": "lecture_notes", "url": rg_url, "reason": str(e)})
+
+    # 4. MIT 6.046 - Design and Analysis of Algorithms (Typed Lecture Notes)
+    m46_dir = BASE_DIR / "lecture_notes" / "mit_6046"
+    m46_dir.mkdir(parents=True, exist_ok=True)
+    m46_url = "https://ocw.mit.edu/courses/6-046j-design-and-analysis-of-algorithms-spring-2015/pages/lecture-notes/"
+    try:
+        r = session.get(m46_url, timeout=20, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "lxml")
+            res_pages = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "resources/lecture-" in href and "handwritten" not in href:
+                    res_pages.add(urljoin(m46_url, href))
+
+            for page_u in sorted(res_pages):
+                try:
+                    p_resp = session.get(page_u, timeout=15, headers=RETRY_HEADERS)
+                    if p_resp.status_code == 200:
+                        p_soup = BeautifulSoup(p_resp.text, "lxml")
+                        pdfs = [urljoin(page_u, a["href"]) for a in p_soup.find_all("a", href=True) if a["href"].endswith(".pdf")]
+                        if pdfs:
+                            pdf_u = pdfs[0]
+                            fname = os.path.basename(urlparse(pdf_u).path)
+                            dest = m46_dir / fname
+                            if dest.exists() and dest.stat().st_size > 1024:
+                                print(f"[OK] lecture_notes/mit_6046/{fname} ({format_size(dest.stat().st_size)}) [Önbellek]")
+                                pdf_stats["total"] += 1
+                                if extract_text_from_pdf(dest):
+                                    pdf_stats["success"] += 1
+                            else:
+                                ok, _ = smart_download(session, pdf_u, dest, timeout=40)
+                                if ok:
+                                    print(f"[OK] lecture_notes/mit_6046/{fname} ({format_size(dest.stat().st_size)})")
+                                    pdf_stats["total"] += 1
+                                    if extract_text_from_pdf(dest):
+                                        pdf_stats["success"] += 1
+                                else:
+                                    print(f"[SKIP] lecture_notes/mit_6046/{fname} (İndirilemedi)")
+                                    skip_list.append({"category": "lecture_notes", "url": pdf_u, "reason": "6.046 fail"})
+                            check_pdf_quality(dest, low_quality_list)
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"[SKIP] lecture_notes/{m46_url} ({e})")
+        skip_list.append({"category": "lecture_notes", "url": m46_url, "reason": str(e)})
+
+    # 5. Jeff Erickson - Algoritmalar Ders Bölümleri ve Notları
+    je_dir = BASE_DIR / "lecture_notes" / "erickson_algorithms"
+    je_dir.mkdir(parents=True, exist_ok=True)
+    je_url = "https://jeffe.cs.illinois.edu/teaching/algorithms/"
+    try:
+        r = session.get(je_url, timeout=20, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "lxml")
+            je_links = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.lower().endswith(".pdf") and ("book/" in href.lower() or "notes/" in href.lower()) and "!!" not in href:
+                    je_links.add(urljoin(je_url, href))
+
+            for purl in sorted(je_links):
+                fname = os.path.basename(urlparse(purl).path)
+                dest = je_dir / fname
+                if dest.exists() and dest.stat().st_size > 1024:
+                    print(f"[OK] lecture_notes/erickson_algorithms/{fname} ({format_size(dest.stat().st_size)}) [Önbellek]")
+                    pdf_stats["total"] += 1
+                    if extract_text_from_pdf(dest):
+                        pdf_stats["success"] += 1
+                else:
+                    ok, _ = smart_download(session, purl, dest, timeout=40)
+                    if ok:
+                        print(f"[OK] lecture_notes/erickson_algorithms/{fname} ({format_size(dest.stat().st_size)})")
+                        pdf_stats["total"] += 1
+                        if extract_text_from_pdf(dest):
+                            pdf_stats["success"] += 1
+                    else:
+                        print(f"[SKIP] lecture_notes/erickson_algorithms/{fname} (İndirilemedi)")
+                        skip_list.append({"category": "lecture_notes", "url": purl, "reason": "Erickson fail"})
+                check_pdf_quality(dest, low_quality_list)
+    except Exception as e:
+        print(f"[SKIP] lecture_notes/{je_url} ({e})")
+        skip_list.append({"category": "lecture_notes", "url": je_url, "reason": str(e)})
+
+    # 6. MIT 6.042 Ders Notu Kontrolü
+    mit_6042_url = "https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-fall-2010/pages/lecture-notes/"
+    try:
+        r = session.get(mit_6042_url, timeout=15, headers=RETRY_HEADERS)
+        if r.status_code != 200:
+            print(f"[SKIP] lecture_notes/{mit_6042_url} (HTTP {r.status_code} redirect)")
+            skip_list.append({"category": "lecture_notes", "url": mit_6042_url, "reason": f"HTTP {r.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] lecture_notes/{mit_6042_url} ({e})")
+        skip_list.append({"category": "lecture_notes", "url": mit_6042_url, "reason": str(e)})
+
+
+def process_theory_expansion(session: requests.Session, skip_list: List[Dict], pdf_stats: Dict, low_quality_list: List[Dict]):
+    """SORUN 3 (Theory): MIT 6.045 ders notları ve Princeton/Brown denetimleri."""
+    logger.info(">>> Hesaplama Teorisi Genişletmesi (MIT 6.045, Princeton, Brown) İşleniyor...")
+    th_dir = BASE_DIR / "theory" / "mit_6045"
+    th_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. MIT 6.045 - Automata, Computability, and Complexity
+    mit_6045_url = "https://ocw.mit.edu/courses/6-045j-automata-computability-and-complexity-spring-2011/pages/lecture-notes/"
+    try:
+        r = session.get(mit_6045_url, timeout=20, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "lxml")
+            resource_urls = []
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "resources/mit6_045js11_lec" in href:
+                    resource_urls.append(urljoin(mit_6045_url, href))
+
+            for res_url in sorted(set(resource_urls)):
+                try:
+                    res_resp = session.get(res_url, timeout=15, headers=RETRY_HEADERS)
+                    if res_resp.status_code == 200:
+                        res_soup = BeautifulSoup(res_resp.text, "lxml")
+                        pdf_a = [urljoin(res_url, a["href"]) for a in res_soup.find_all("a", href=True) if a["href"].endswith(".pdf")]
+                        if pdf_a:
+                            pdf_url = pdf_a[0]
+                            fname = os.path.basename(urlparse(pdf_url).path)
+                            dest = th_dir / fname
+                            if dest.exists() and dest.stat().st_size > 1024:
+                                print(f"[OK] theory/mit_6045/{fname} ({format_size(dest.stat().st_size)}) [Önbellek]")
+                                pdf_stats["total"] += 1
+                                if extract_text_from_pdf(dest):
+                                    pdf_stats["success"] += 1
+                            else:
+                                ok, _ = smart_download(session, pdf_url, dest, timeout=40)
+                                if ok:
+                                    print(f"[OK] theory/mit_6045/{fname} ({format_size(dest.stat().st_size)})")
+                                    pdf_stats["total"] += 1
+                                    if extract_text_from_pdf(dest):
+                                        pdf_stats["success"] += 1
+                                else:
+                                    print(f"[SKIP] theory/mit_6045/{fname} (İndirilemedi)")
+                                    skip_list.append({"category": "theory", "url": pdf_url, "reason": "6.045 PDF fail"})
+                            check_pdf_quality(dest, low_quality_list)
+                except Exception:
+                    continue
+        else:
+            print(f"[SKIP] theory/{mit_6045_url} (HTTP {r.status_code})")
+            skip_list.append({"category": "theory", "url": mit_6045_url, "reason": f"HTTP {r.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] theory/{mit_6045_url} ({e})")
+        skip_list.append({"category": "theory", "url": mit_6045_url, "reason": str(e)})
+
+    # 2. Princeton COS 487 (404 kontrolü ve SKIP loglama)
+    cos487_url = "https://www.cs.princeton.edu/courses/archive/fall04/cos487/lectures/"
+    try:
+        r = session.get(cos487_url, timeout=10, headers=RETRY_HEADERS)
+        if r.status_code == 404:
+            print(f"[SKIP] theory/{cos487_url} (HTTP 404 Not Found)")
+            skip_list.append({"category": "theory", "url": cos487_url, "reason": "HTTP 404 Not Found"})
+        elif r.status_code == 200:
+            print(f"[OK] theory/{cos487_url} (200)")
+    except Exception as e:
+        print(f"[SKIP] theory/{cos487_url} ({e})")
+        skip_list.append({"category": "theory", "url": cos487_url, "reason": str(e)})
+
+    # 3. Brown CSCI 1010
+    brown_url = "https://cs.brown.edu/courses/csci1010/"
+    try:
+        r = session.get(brown_url, timeout=10, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            print(f"[SKIP] theory/{brown_url} (Doğrudan PDF ders notu yok, telifli Sipser yönlendirmesi)")
+            skip_list.append({"category": "theory", "url": brown_url, "reason": "No direct open PDF notes"})
+    except Exception as e:
+        print(f"[SKIP] theory/{brown_url} ({e})")
+        skip_list.append({"category": "theory", "url": brown_url, "reason": str(e)})
+
+
+def process_networking_expansion(session: requests.Session, skip_list: List[Dict]):
+    """SORUN 3 (Networking): Kurose & Ross ders notları ve slayt kontrolleri."""
+    logger.info(">>> Bilgisayar Ağları Genişletmesi (Kurose & Ross) İşleniyor...")
+    net_dir = BASE_DIR / "networking"
+    net_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Kurose & Ross Online Lectures HTML
+    kr_url = "https://gaia.cs.umass.edu/kurose_ross/online_lectures.htm"
+    dest_kr = net_dir / "kurose_ross_online_lectures.html"
+    try:
+        r = session.get(kr_url, timeout=15, headers=RETRY_HEADERS)
+        if r.status_code == 200:
+            with open(dest_kr, "wb") as f:
+                f.write(r.content)
+            extract_text_from_html(dest_kr)
+            print(f"[OK] networking/kurose_ross_online_lectures.html ({format_size(len(r.content))})")
+        else:
+            print(f"[SKIP] networking/{kr_url} (HTTP {r.status_code})")
+            skip_list.append({"category": "networking", "url": kr_url, "reason": f"HTTP {r.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] networking/{kr_url} ({e})")
+        skip_list.append({"category": "networking", "url": kr_url, "reason": str(e)})
+
+    # 2. Kurose & Ross PPT Slaytları (404 kontrolü)
+    ppt_url = "https://www-net.cs.umass.edu/kurose-ross-ppt-8e/"
+    try:
+        r = session.get(ppt_url, timeout=10, headers=RETRY_HEADERS)
+        if r.status_code != 200:
+            print(f"[SKIP] networking/{ppt_url} (HTTP {r.status_code} Not Found)")
+            skip_list.append({"category": "networking", "url": ppt_url, "reason": f"HTTP {r.status_code}"})
+    except Exception as e:
+        print(f"[SKIP] networking/{ppt_url} ({e})")
+        skip_list.append({"category": "networking", "url": ppt_url, "reason": str(e)})
 
 
 def process_html_crawler(session: requests.Session, skip_list: List[Dict]):
@@ -598,7 +1069,7 @@ def process_html_crawler(session: requests.Session, skip_list: List[Dict]):
             skip_list.append({"category": cat_name, "url": index_url, "reason": str(e)})
 
 
-def process_papers_we_love(skip_list: List[Dict], pdf_stats: Dict):
+def process_papers_we_love(skip_list: List[Dict], pdf_stats: Dict, low_quality_list: List[Dict]):
     """Papers We Love makale koleksiyonunu yerel kontrol eder veya klonlar."""
     logger.info(">>> Papers We Love Makale Koleksiyonu Denetleniyor...")
     cat_dir = BASE_DIR / "papers_we_love"
@@ -612,6 +1083,7 @@ def process_papers_we_love(skip_list: List[Dict], pdf_stats: Dict):
             pdf_stats["total"] += 1
             if extract_text_from_pdf(pdf_path):
                 pdf_stats["success"] += 1
+            check_pdf_quality(pdf_path, low_quality_list)
         return
 
     repo_url = "https://github.com/papers-we-love/papers-we-love.git"
@@ -656,6 +1128,7 @@ def process_papers_we_love(skip_list: List[Dict], pdf_stats: Dict):
                             pdf_stats["total"] += 1
                             if extract_text_from_pdf(dest_file):
                                 pdf_stats["success"] += 1
+                            check_pdf_quality(dest_file, low_quality_list)
 
     except Exception as e:
         msg = f"Papers We Love klonlama hatası: {e}"
@@ -698,28 +1171,44 @@ def main():
     session.headers.update(RETRY_HEADERS)
 
     skip_list: List[Dict] = []
+    low_quality_list: List[Dict] = []
     pdf_stats = {"total": 0, "success": 0}
 
     # 1. Doğrudan Dosyalar (Patterson & Hennessy, C++, Postgres, D2L, Sutton & Barto, RFC'ler vb.)
-    process_direct_files(session, skip_list, pdf_stats)
+    process_direct_files(session, skip_list, pdf_stats, low_quality_list)
 
     # 2. Hailperin OS Kitabı (GitHub Clone -> systems/)
-    process_hailperin_os(pdf_stats)
+    process_hailperin_os(pdf_stats, low_quality_list)
 
     # 3. MIT 6.006 Algoritmalar Ders Notları (lec01 - lec24 -> lecture_notes/)
-    process_mit_6006_lectures(session, pdf_stats)
+    process_mit_6006_lectures(session, pdf_stats, low_quality_list)
 
     # 4. Açık Erişim Mimari Kitapları (IIT Delhi & Rowan)
-    process_architecture_open_access(session, skip_list, pdf_stats)
+    process_architecture_open_access(session, skip_list, pdf_stats, low_quality_list)
 
-    # 5. HTML tabanlı kitaplar (Crafting Interpreters, BottomUpCS, RedBook, Python Docs vb.)
+    # 5. SORUN 1: gc_papers (PWL garbage_collection klasörünü aktar)
+    process_gc_papers(pdf_stats, low_quality_list)
+
+    # 6. SORUN 2: lecture_notes genişletmesi (Kleinberg-Tardos, Stanford CS161, Roughgarden)
+    process_lecture_notes_expansion(session, skip_list, pdf_stats, low_quality_list)
+
+    # 7. SORUN 3: theory genişletmesi (MIT 6.045, Princeton, Brown)
+    process_theory_expansion(session, skip_list, pdf_stats, low_quality_list)
+
+    # 8. SORUN 3: networking genişletmesi (Kurose & Ross)
+    process_networking_expansion(session, skip_list)
+
+    # 9. HTML tabanlı kitaplar (Crafting Interpreters, BottomUpCS, RedBook, Python Docs vb.)
     process_html_crawler(session, skip_list)
 
-    # 6. Papers We Love makale arşivi
-    process_papers_we_love(skip_list, pdf_stats)
+    # 10. Papers We Love makale arşivi
+    process_papers_we_love(skip_list, pdf_stats, low_quality_list)
 
-    # 7. Yerel telifli kitap denetimi
+    # 11. Yerel telifli kitap denetimi
     check_local_required()
+
+    # 12. Düşük kaliteli PDF raporunu kaydet
+    save_low_quality_report(low_quality_list)
 
     # ==========================================================================
     # İstatistikler ve Kategori Özeti
@@ -738,18 +1227,18 @@ def main():
     for cat in categories:
         cat_dir = BASE_DIR / cat
         all_files = [f for f in cat_dir.rglob("*") if f.is_file()]
-        txt_files = [f for f in all_files if f.suffix.lower() == ".txt" and f.name != "LICENSE_NOTE.txt"]
+        txt_files = [f for f in all_files if f.suffix.lower() == ".txt" and f.name != "LICENSE_NOTE.txt" and f.name != "_low_quality.txt"]
 
-        cat_total_size = sum(f.stat().st_size for f in all_files)
+        cat_total_size = sum(f.stat().st_size for f in all_files if f.name != "_low_quality.txt")
         cat_txt_size = sum(f.stat().st_size for f in txt_files)
 
         total_all_bytes += cat_total_size
         total_txt_bytes += cat_txt_size
-        total_file_count += len(all_files)
+        total_file_count += len([f for f in all_files if f.name != "_low_quality.txt"])
         total_txt_count += len(txt_files)
 
         print(
-            f"- {cat:<20}: {len(all_files):>3} dosya ({format_size(cat_total_size):>9}) | "
+            f"- {cat:<20}: {len([f for f in all_files if f.name != '_low_quality.txt']):>3} dosya ({format_size(cat_total_size):>9}) | "
             f".txt: {len(txt_files):>3} adet ({format_size(cat_txt_size):>9})"
         )
 
@@ -758,12 +1247,13 @@ def main():
     print(f"Toplam Çıkarılan .txt     : {total_txt_count}")
     print(f"Toplam Ham + TXT Boyutu   : {format_size(total_all_bytes)}")
     print(f"TOPLAM ÇIKARILAN METİN    : {format_size(total_txt_bytes)} ({total_txt_bytes / (1024 * 1024):.2f} MB)")
-    hedef_durumu = "[BASARILI - HEDEF ASILDI]" if total_txt_bytes >= 65 * 1024 * 1024 else "[65 MB ALTINDA]"
-    print(f"Hedef Kontrolü (>= 65 MB) : {hedef_durumu}")
+    hedef_durumu = "[BASARILI - HEDEF ASILDI]" if total_txt_bytes >= 85 * 1024 * 1024 else "[85 MB ALTINDA]"
+    print(f"Hedef Kontrolü (>= 85 MB) : {hedef_durumu}")
     print(f"Kalan SKIP / Hata Sayısı  : {len(skip_list)}")
     if pdf_stats["total"] > 0:
         pct = (pdf_stats["success"] / pdf_stats["total"]) * 100
         print(f"PDF Extraction Başarısı   : {pdf_stats['success']}/{pdf_stats['total']} (%{pct:.1f})")
+    print(f"Düşük Kaliteli PDF Sayısı : {len(low_quality_list)}")
     print(f"Toplam Çalışma Süresi     : {elapsed:.1f} saniye")
     print("=" * 70 + "\n")
 
