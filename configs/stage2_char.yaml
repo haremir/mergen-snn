@@ -1,0 +1,9 @@
+# Stage 2: Character-Level SNN Language Modeling
+stage: 2
+model_type: "spiking_rnn"
+sequence_length: 64
+hidden_dim: 256
+batch_size: 32
+num_epochs: 10
+learning_rate: 0.0005
+time_steps: 16

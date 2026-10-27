@@ -1,0 +1,7 @@
+# Stage 1: SNN Verification on MNIST
+stage: 1
+dataset: "mnist"
+batch_size: 64
+num_epochs: 5
+learning_rate: 0.001
+time_steps: 25
