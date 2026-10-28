@@ -6,8 +6,8 @@ device:
 
 data:
   name: bpe_lm
-  block_size: 128
-  batch_size: 32  # Bellek sınırı için 32'de tutuyoruz
+  block_size: 64
+  batch_size: 64
   train_bin: data/processed/bpe_train.bin
   val_bin: data/processed/bpe_val.bin
   tokenizer_path: data/processed/tokenizer_bpe.json
@@ -18,7 +18,7 @@ model:
   embed_dim: 512
   hidden_size: 1024
   beta: 0.9
-  num_steps: 128
+  num_steps: 64
 
 training:
   epochs: 1

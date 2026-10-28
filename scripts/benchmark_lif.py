@@ -1,14 +1,16 @@
-"""Mergen-SNN — Stage 3: Cython vs snnTorch LIF Hız Karşılaştırması (Benchmark).
+"""Mergen-SNN — Stage 3: Eski (Döngü içi Lineer) vs Yeni (Vektörize Lineer + Cython) Benchmark.
 
-10 eğitim adımı (batch=32, seq_len=128, vocab=8192) üzerinden:
-- Eski snnTorch Leaky modeli
-- Yeni Cython FastLeaky modeli
+10 eğitim adımı (batch=64, seq_len=64, vocab=8192) üzerinden:
+- Eski model: Döngü içi Lineer katmanlar (fc1, fc2, fc_out) ve snnTorch
+- Yeni model: Sequence Batching (Vektörize Lineer) ve Cython FastLeaky
 karşılaştırılır ve hızlanma oranı hesaplanır.
 """
 
 import sys
 import time
+import snntorch as snn
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 # Windows konsol UTF-8 çıktı desteği
@@ -18,26 +20,58 @@ if hasattr(sys.stdout, "reconfigure"):
 from mergen.models.snn_lm_bpe import BpeSNNLM
 
 
-def run_benchmark(steps: int = 10, batch_size: int = 32, seq_len: int = 128):
-    print("=" * 65)
-    print(" MERGEN-SNN LIF BENCHMARK: snnTorch vs Cython FastLeaky")
+class OldLoopBpeSNNLM(nn.Module):
+    """Eski Model: Her zaman adımında döngü içinde çağrılan Lineer katmanlar."""
+
+    def __init__(
+        self,
+        vocab_size: int = 8192,
+        embed_dim: int = 512,
+        hidden_size: int = 1024,
+        beta: float = 0.9,
+    ):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.fc1 = nn.Linear(embed_dim, hidden_size)
+        self.lif1 = snn.Leaky(beta=beta)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.lif2 = snn.Leaky(beta=beta)
+        self.fc_out = nn.Linear(hidden_size, vocab_size)
+
+    def forward(self, input_ids: torch.Tensor, num_steps: int = 64) -> torch.Tensor:
+        emb = self.embedding(input_ids)
+        mem1 = self.lif1.init_leaky()
+        mem2 = self.lif2.init_leaky()
+        logits_list = []
+        for t in range(num_steps):
+            x_t = emb[:, t, :]
+            cur1 = self.fc1(x_t)
+            spk1, mem1 = self.lif1(cur1, mem1)
+            cur2 = self.fc2(spk1)
+            spk2, mem2 = self.lif2(cur2, mem2)
+            logits_t = self.fc_out(spk2)
+            logits_list.append(logits_t)
+        return torch.stack(logits_list, dim=1)
+
+
+def run_benchmark(steps: int = 10, batch_size: int = 64, seq_len: int = 64):
+    print("=" * 70)
+    print(" MERGEN-SNN BENCHMARK: Eski (Döngü içi Lineer) vs Yeni (Vektörize Lineer)")
     print(f" Ayarlar: Batch={batch_size}, Seq={seq_len}, Timesteps={seq_len}, Steps={steps}")
-    print("=" * 65)
+    print("=" * 70)
 
     torch.manual_seed(42)
     device = torch.device("cpu")
 
-    # Modelleri oluştur (~14M parametre)
-    print("\nModeller yükleniyor (14M BpeSNNLM)...")
-    model_snntorch = BpeSNNLM(
+    print("\nModeller yükleniyor (14M parametre)...")
+    model_old = OldLoopBpeSNNLM(
         vocab_size=8192,
         embed_dim=512,
         hidden_size=1024,
         beta=0.9,
-        use_cython=False,
     ).to(device)
 
-    model_cython = BpeSNNLM(
+    model_new = BpeSNNLM(
         vocab_size=8192,
         embed_dim=512,
         hidden_size=1024,
@@ -45,8 +79,8 @@ def run_benchmark(steps: int = 10, batch_size: int = 32, seq_len: int = 128):
         use_cython=True,
     ).to(device)
 
-    opt_snntorch = torch.optim.AdamW(model_snntorch.parameters(), lr=1e-3)
-    opt_cython = torch.optim.AdamW(model_cython.parameters(), lr=1e-3)
+    opt_old = torch.optim.SGD(model_old.parameters(), lr=0.003, momentum=0.9)
+    opt_new = torch.optim.SGD(model_new.parameters(), lr=0.003, momentum=0.9)
 
     # Sentetik veri
     x = torch.randint(0, 8192, (batch_size, seq_len), device=device)
@@ -54,61 +88,61 @@ def run_benchmark(steps: int = 10, batch_size: int = 32, seq_len: int = 128):
 
     # 1. Warm-up
     print("Isınma adımları (warm-up) çalıştırılıyor...")
-    out = model_snntorch(x, num_steps=seq_len)
+    out = model_old(x, num_steps=seq_len)
     loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
     loss.backward()
-    opt_snntorch.step()
-    opt_snntorch.zero_grad()
+    opt_old.step()
+    opt_old.zero_grad()
 
-    out = model_cython(x, num_steps=seq_len)
+    out = model_new(x, num_steps=seq_len)
     loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
     loss.backward()
-    opt_cython.step()
-    opt_cython.zero_grad()
+    opt_new.step()
+    opt_new.zero_grad()
 
-    # 2. snnTorch Ölçümü
-    print("\n[1/2] snnTorch Modeli Test Ediliyor (10 adım)...")
-    snntorch_times = []
+    # 2. Eski Model Ölçümü
+    print("\n[1/2] Eski Model (Döngü içi Lineer) Test Ediliyor (10 adım)...")
+    old_times = []
     for step in range(1, steps + 1):
         t0 = time.perf_counter()
-        opt_snntorch.zero_grad()
-        out = model_snntorch(x, num_steps=seq_len)
+        opt_old.zero_grad()
+        out = model_old(x, num_steps=seq_len)
         loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
         loss.backward()
-        opt_snntorch.step()
+        opt_old.step()
         dt = time.perf_counter() - t0
-        snntorch_times.append(dt)
+        old_times.append(dt)
         print(f"  Step {step:2d}/10: {dt:.4f} s")
 
-    # 3. Cython Ölçümü
-    print("\n[2/2] Cython FastLeaky Modeli Test Ediliyor (10 adım)...")
-    cython_times = []
+    # 3. Yeni Vektörize Model Ölçümü
+    print("\n[2/2] Yeni Model (Vektörize Lineer + Cython) Test Ediliyor (10 adım)...")
+    new_times = []
     for step in range(1, steps + 1):
         t0 = time.perf_counter()
-        opt_cython.zero_grad()
-        out = model_cython(x, num_steps=seq_len)
+        opt_new.zero_grad()
+        out = model_new(x, num_steps=seq_len)
         loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
         loss.backward()
-        opt_cython.step()
+        opt_new.step()
         dt = time.perf_counter() - t0
-        cython_times.append(dt)
+        new_times.append(dt)
         print(f"  Step {step:2d}/10: {dt:.4f} s")
 
     # Sonuçlar
-    avg_snntorch = sum(snntorch_times) / len(snntorch_times)
-    avg_cython = sum(cython_times) / len(cython_times)
-    speedup = avg_snntorch / avg_cython
+    avg_old = sum(old_times) / len(old_times)
+    avg_new = sum(new_times) / len(new_times)
+    speedup = avg_old / avg_new
 
-    print("\n" + "=" * 65)
+    print("\n" + "=" * 70)
     print(" BENCHMARK SONUÇLARI")
-    print("=" * 65)
-    print(f" Eski snnTorch Süresi (ortalama 1 step): {avg_snntorch:.4f} s")
-    print(f" Yeni Cython Süresi   (ortalama 1 step): {avg_cython:.4f} s")
-    print(f" Hızlanma Oranı (Speedup)              : {speedup:.2f}x ({speedup:.2f} kat hızlandı)")
-    print("=" * 65)
+    print("=" * 70)
+    print(f" Eski Model Süresi (döngü içi Lineer, ort. 1 step): {avg_old:.4f} s")
+    print(f" Yeni Model Süresi (vektörize Lineer, ort. 1 step): {avg_new:.4f} s")
+    print(f" Hızlanma Oranı (Speedup)                          : {speedup:.2f}x ({speedup:.2f} kat hızlandı)")
+    print("=" * 70)
 
-    return avg_snntorch, avg_cython, speedup
+    return avg_old, avg_new, speedup
 
 
 if __name__ == "__main__":
-    run_benchmark(steps=10, batch_size=32, seq_len=128)
+    run_benchmark(steps=10, batch_size=64, seq_len=64)

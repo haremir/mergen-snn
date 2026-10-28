@@ -137,25 +137,33 @@ class BpeSNNLM(nn.Module):
         self.fc_out = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, input_ids: torch.Tensor, num_steps: int = 128) -> torch.Tensor:
-        # input_ids: (batch, seq_len)
         batch_size = input_ids.size(0)
-        emb = self.embedding(input_ids)  # (batch, seq_len, embed_dim)
+        emb = self.embedding(input_ids)  # (batch, num_steps, embed_dim)
 
-        # FC1 projeksiyonu tüm dizi için paralel hesaplanır
-        cur1_all = self.fc1(emb)  # (batch, seq_len, hidden_size)
+        # 1. FC1'i TÜM timestep'ler için TEK SEFERDE hesapla (PyTorch BLAS kullanır)
+        cur1_all = self.fc1(emb)  # (batch, num_steps, hidden_size)
 
+        # 2. LIF1 döngüsü (Cython FastLIF)
         mem1 = self.lif1.init_leaky()
+        spk1_list = []
+        for t in range(num_steps):
+            # .contiguous() ekle, Cython buffer uyumu için
+            spk1, mem1 = self.lif1(cur1_all[:, t, :].contiguous(), mem1)
+            spk1_list.append(spk1)
+        spk1_all = torch.stack(spk1_list, dim=1)  # (batch, num_steps, hidden_size)
+
+        # 3. FC2'yi TEK SEFERDE hesapla
+        cur2_all = self.fc2(spk1_all)  # (batch, num_steps, hidden_size)
+
+        # 4. LIF2 döngüsü (Cython FastLIF)
         mem2 = self.lif2.init_leaky()
         spk2_list = []
-
-        # Ardışık zaman adımlı LIF membran entegrasyonu
         for t in range(num_steps):
-            cur1_t = cur1_all[:, t, :]
-            spk1, mem1 = self.lif1(cur1_t, mem1)
-            cur2 = self.fc2(spk1)
-            spk2, mem2 = self.lif2(cur2, mem2)
+            spk2, mem2 = self.lif2(cur2_all[:, t, :].contiguous(), mem2)
             spk2_list.append(spk2)
+        spk2_all = torch.stack(spk2_list, dim=1)
 
-        # Çıkış projeksiyonu (FC_out) tüm adımlar için tek bir GEMM matmul ile hesaplanır
-        spk2_all = torch.stack(spk2_list, dim=1)  # (batch, seq_len, hidden_size)
-        return self.fc_out(spk2_all)  # (batch, seq_len, vocab_size)
+        # 5. FC_OUT'u TEK SEFERDE hesapla
+        logits_all = self.fc_out(spk2_all)  # (batch, num_steps, vocab_size)
+
+        return logits_all
