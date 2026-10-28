@@ -254,6 +254,7 @@ def main():
     prompts = [
         "Python'da liste",
         "def train(",
+        "The algorithm ",
     ]
 
     print("\n" + "=" * 70)

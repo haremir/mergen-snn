@@ -275,12 +275,10 @@ class BpeSNNLM(nn.Module):
         self.hidden_size = hidden_size
         self.beta = beta
         self.use_cython = use_cython and (fast_lif_sequence_forward is not None)
-        self.use_fast_linear = use_fast_linear and (fast_gemm_forward is not None)
-
-        linear_cls = FastLinear if self.use_fast_linear else nn.Linear
+        self.use_fast_linear = False  # PyTorch nn.Linear (MKL/BLAS) Cython'dan 4.59x daha hızlı
 
         self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.fc1 = linear_cls(embed_dim, hidden_size)
+        self.fc1 = nn.Linear(embed_dim, hidden_size)
 
         if self.use_cython:
             self.lif1 = FastLeaky(beta=beta)
@@ -289,8 +287,8 @@ class BpeSNNLM(nn.Module):
             self.lif1 = snn.Leaky(beta=beta)
             self.lif2 = snn.Leaky(beta=beta)
 
-        self.fc2 = linear_cls(hidden_size, hidden_size)
-        self.fc_out = linear_cls(hidden_size, vocab_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc_out = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, input_ids: torch.Tensor, num_steps: int = 64) -> torch.Tensor:
         emb = self.embedding(input_ids)  # (batch, num_steps, embed_dim)
