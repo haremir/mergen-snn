@@ -5,7 +5,7 @@ PyTorch Dataset sınıfı ve charset yükleme/kodlama yardımcı fonksiyonları.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -15,17 +15,21 @@ from torch.utils.data import Dataset
 class CharDataset(Dataset):
     """Karakter seviyesi dil modeli için sabit pencereli PyTorch veri kümesi."""
 
-    def __init__(self, bin_path: Union[str, Path], block_size: int = 32):
+    def __init__(self, bin_path: Union[str, Path], block_size: int = 32, stride: Optional[int] = None):
         # np.load ile yükle ve int64 (PyTorch LongTensor) tipine dönüştür
         self.data = np.load(bin_path).astype(np.int64)
         self.block_size = block_size
+        self.stride = stride if stride is not None else block_size
 
     def __len__(self) -> int:
-        return len(self.data) - self.block_size - 1
+        if len(self.data) < self.block_size + 1:
+            return 0
+        return (len(self.data) - 1) // self.stride
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = self.data[idx : idx + self.block_size]
-        y = self.data[idx + 1 : idx + self.block_size + 1]
+        start = idx * self.stride
+        x = self.data[start : start + self.block_size]
+        y = self.data[start + 1 : start + self.block_size + 1]
         return torch.from_numpy(x).long(), torch.from_numpy(y).long()
 
 

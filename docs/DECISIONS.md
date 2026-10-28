@@ -11,6 +11,7 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
 | **01** | **Donanım Arka Ucu & Optimizatör** | DirectML üzerinde varsayılan olarak **SGD (`momentum=0.9`, `foreach=False`)** kullanımı | 2026-10-27 | ✅ Kabul Edildi |
 | **02** | **Karakter LM Girdi Temsili** | Aşama 2'ye **One-Hot → LIF** ile başlanması, ardından **Embedding → Spike**'a geçilmesi | 2026-10-27 | ✅ Kabul Edildi |
 | **03** | **Bağlam ve Model Mimarisi** | Aşama 2'de **Sabit Pencereli Spiking RNN**, Aşama 3'te **SpikeGPT/Spikformer** mimarisi | 2026-10-27 | ✅ Kabul Edildi |
+| **04** | **Stage 2 Donanım Seçimi: CPU vs DirectML** | Stage 2 model boyutunda (275K parametre), sequential LIF döngüsü için **CPU kullanımı** (8x daha hızlı) | 2026-10-28 | ✅ Kabul Edildi |
 
 ---
 
@@ -41,3 +42,11 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
 - **Aşamalandırma:**
   - **Aşama 2 (Hafif & Hızlı):** Sabit pencereli (fixed-window, ör. $L=64$ karakter) tekrarlayan (recurrent) LIF blokları. Doğrudan CPU ve RX 580 üzerinde eğitilebilir.
   - **Aşama 3 (Ölçekleme & Transformer):** Bilgisayar Bilimleri külliyatı için SpikeGPT veya Spikformer benzeri kendi kendine dikkat (self-attention) mekanizmasını spike dinamikleriyle değiştiren mimarilere geçiş.
+
+---
+
+### ADR 04: Aşama 2 İçin CPU Donanım Seçimi (DirectML Karşılaştırması)
+- **Bağlam:** Aşama 2 karakter seviyesi SNN dil modeli (275K parametre, 32 timestep) eğitimi için DirectML ve CPU başa baş hız testine tabi tutulmuştur.
+- **Bulgular & Ölçüm:** Stage 2 model boyutunda (275K parametre), CPU (61ms/step) DirectML'den (492ms/step) 8x daha hızlıdır.
+- **Gerekçe:** 32 timestep sequential LIF döngüsü GPU'da paralelleştirilememekte, DirectML kernel launch overhead'i kazancı yutmaktadır. Bu nedenle Aşama 2 eğitiminde CPU tercih edilmiştir.
+- **Gelecek Planı:** Stage 3'te model >5M parametreye ulaştığında ve matris boyutları büyüdüğünde DirectML tekrar test edilecektir.

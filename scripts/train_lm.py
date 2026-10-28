@@ -53,7 +53,7 @@ def main():
     # 1. Config yükle
     cfg = load_config()
 
-    prefer_device = cfg.get("device", {}).get("prefer", "auto")
+    prefer_device = cfg.get("device", {}).get("prefer", "cpu")
     device = get_device(prefer=prefer_device)
     dev_name = device_name(device)
 
@@ -62,7 +62,7 @@ def main():
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     block_size = int(cfg.get("data", {}).get("block_size", 32))
-    batch_size = int(cfg.get("data", {}).get("batch_size", 64))
+    batch_size = int(cfg.get("data", {}).get("batch_size", 32))
     num_workers = int(cfg.get("data", {}).get("num_workers", 0))
 
     embed_dim = int(cfg.get("model", {}).get("embed_dim", 128))
@@ -70,14 +70,15 @@ def main():
     beta = float(cfg.get("model", {}).get("beta", 0.9))
     num_steps = int(cfg.get("model", {}).get("num_steps", block_size))
 
-    epochs = int(cfg.get("training", {}).get("epochs", 1))
+    epochs = int(cfg.get("training", {}).get("epochs", 2))
     lr = float(cfg.get("training", {}).get("learning_rate", 0.01))
     momentum = float(cfg.get("training", {}).get("momentum", 0.9))
     foreach = bool(cfg.get("training", {}).get("foreach", False))
     max_steps_per_epoch = cfg.get("training", {}).get("max_steps_per_epoch", None)
     if max_steps_per_epoch is not None:
         max_steps_per_epoch = int(max_steps_per_epoch)
-    log_every = int(cfg.get("training", {}).get("log_every", 100))
+    log_every = int(cfg.get("training", {}).get("log_every", 500))
+    resume_enabled = bool(cfg.get("training", {}).get("resume", True))
 
     # 2. Charset yükle ve vocab_size doğrula
     charset_path = data_dir / "charset.json"
@@ -135,9 +136,9 @@ def main():
     logger.info(f"Cihaz: {dev_name} ({device})")
     logger.info(f"Model: vocab={vocab_size}, embed_dim={embed_dim}, hidden_size={hidden_size}, beta={beta}")
     logger.info(f"Eğitim: batch_size={batch_size}, num_steps={num_steps}, epochs={epochs}, lr={lr}")
-    logger.info(f"Adım Sınırı (max_steps_per_epoch): {max_steps_per_epoch}")
+    logger.info(f"Toplam adım/epoch: {max_steps_per_epoch or len(train_loader):,}")
 
-    # 5. Optimizatör: SGD (foreach=False, DirectML uyumlu)
+    # 5. Optimizatör: SGD (foreach=False, DirectML/CPU uyumlu)
     optimizer = torch.optim.SGD(
         model.parameters(),
         lr=lr,
@@ -145,10 +146,26 @@ def main():
         foreach=foreach,
     )
 
+    # Checkpoint Resume Kontrolü
+    best_val_loss = float("inf")
+    best_ckpt_path = checkpoints_dir / "lm_best.pt"
+
+    if resume_enabled and best_ckpt_path.exists():
+        logger.info(f"Mevcut checkpoint tespit edildi, yükleniyor: {best_ckpt_path}")
+        try:
+            checkpoint_data = torch.load(best_ckpt_path, map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint_data["model_state_dict"])
+            if "optimizer_state_dict" in checkpoint_data:
+                optimizer.load_state_dict(checkpoint_data["optimizer_state_dict"])
+            best_val_loss = checkpoint_data.get("val_loss", float("inf"))
+            prev_epoch = checkpoint_data.get("epoch", 0)
+            logger.info(f"Checkpoint başarıyla yüklendi (Önceki en iyi val_loss: {best_val_loss:.4f}, epoch: {prev_epoch})")
+        except Exception as e:
+            logger.warning(f"Checkpoint yüklenirken hata oluştu (sıfırdan başlanıyor): {e}")
+
     # 6. Epoch Döngüsü
     train_losses = []
     val_losses = []
-    best_val_loss = float("inf")
 
     total_training_start = time.time()
 
@@ -156,7 +173,7 @@ def main():
         logger.info(f"--- Epoch {epoch + 1}/{epochs} Başladı ---")
         t0 = time.time()
 
-        train_loss, train_elapsed, step_avg_sec = train_epoch_lm(
+        train_loss, train_elapsed, step_avg_sec, early_stopped = train_epoch_lm(
             model=model,
             loader=train_loader,
             optimizer=optimizer,
@@ -164,6 +181,7 @@ def main():
             num_steps=num_steps,
             max_steps=max_steps_per_epoch,
             log_every=log_every,
+            patience_steps=5000,
         )
 
         val_loss, val_elapsed = eval_epoch_lm(
@@ -181,14 +199,17 @@ def main():
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
+        is_best = val_loss < best_val_loss
+        best_tag = " | BEST" if is_best else ""
+
         logger.info(
-            f"Epoch {epoch + 1}/{epochs} Tamamlandı | "
+            f"Epoch {epoch + 1}/{epochs} | "
             f"train_loss={train_loss:.4f} ppl={train_ppl:.2f} | "
             f"val_loss={val_loss:.4f} ppl={val_ppl:.2f} | "
-            f"süre={epoch_duration:.1f}s (step_ort={step_avg_sec * 1000:.1f}ms)"
+            f"{epoch_duration:.0f}s{best_tag}"
         )
 
-        # Checkpoint kaydet
+        # Epoch checkpoint kaydet
         ckpt_path = checkpoints_dir / f"lm_epoch{epoch + 1}.pt"
         torch.save(
             {
@@ -207,13 +228,13 @@ def main():
         logger.info(f"Checkpoint kaydedildi: {ckpt_path}")
 
         # En iyi val loss kontrolü
-        if val_loss < best_val_loss:
+        if is_best:
             best_val_loss = val_loss
-            best_ckpt_path = checkpoints_dir / "lm_best.pt"
             torch.save(
                 {
                     "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                     "vocab_size": vocab_size,
@@ -225,7 +246,29 @@ def main():
             )
             logger.info(f"Yeni en iyi model kaydedildi: {best_ckpt_path} (val_loss={val_loss:.4f})")
 
-    # 7. Eğitim eğrisi kaydet
+        if early_stopped:
+            logger.warning("5000 adım boyunca plato nedeniyle eğitim erken durduruldu.")
+            break
+
+    # 7. Final model checkpoint kaydet
+    final_ckpt_path = checkpoints_dir / "lm_final.pt"
+    torch.save(
+        {
+            "epoch": len(train_losses),
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "train_loss": train_losses[-1] if train_losses else None,
+            "val_loss": val_losses[-1] if val_losses else None,
+            "vocab_size": vocab_size,
+            "embed_dim": embed_dim,
+            "hidden_size": hidden_size,
+            "beta": beta,
+        },
+        final_ckpt_path,
+    )
+    logger.info(f"Final model kaydedildi: {final_ckpt_path}")
+
+    # 8. Eğitim eğrisi kaydet
     if len(train_losses) > 0:
         plt.figure(figsize=(8, 5))
         plt.plot(range(1, len(train_losses) + 1), train_losses, label="Train Loss", marker="o")

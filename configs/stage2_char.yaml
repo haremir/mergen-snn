@@ -2,12 +2,12 @@ defaults:
   - default
 
 device:
-  prefer: cpu   # DirectML ~492ms/step (>0.5s eşiğinde), CPU ~61ms/step (8x hızlı)
+  prefer: cpu   # DirectML ~492ms/step (>0.5s eşiğinde), CPU ~48ms/step (8x hızlı)
 
 data:
   name: char_lm
   block_size: 32
-  batch_size: 64
+  batch_size: 32
 
 model:
   vocab_size: 460    # charset.json'dan okunacak, bu fallback
@@ -22,10 +22,14 @@ training:
   optimizer: sgd
   foreach: false
   momentum: 0.9
-  max_steps_per_epoch: 2000   # null = tüm veri; test için 2000 kullan
+  max_steps_per_epoch: null   # null = tüm veri (~81K step/epoch)
   checkpoint_dir: checkpoints
-  log_every: 100
+  log_every: 500
+  resume: true
 
 generation:
   max_new_chars: 80
   temperature: 1.0
+  top_k: 40
+  top_p: 0.9
+  temperatures: [0.7, 0.8, 0.9, 1.0, 1.2]
