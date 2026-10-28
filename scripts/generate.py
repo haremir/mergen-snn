@@ -1,19 +1,20 @@
-"""Mergen-SNN — Stage 2 Metin Üretim Scripti (CharSNNLM).
+"""Mergen-SNN — Metin Üretim Scripti (Stage 2 Char & Stage 3 BPE).
 
-Gelişmiş örnekleme stratejileri (Sıcaklık, Top-k, Top-p/Nucleus) ve REPL modu.
+Gelişmiş örnekleme (Sıcaklık, Top-k, Top-p/Nucleus) ve hem Char hem BPE desteği.
 """
 
 import argparse
 import os
 from pathlib import Path
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import torch
 import yaml
 
-from mergen.data.char_dataset import decode, encode, load_charset
+from mergen.data.char_dataset import decode as char_decode, encode as char_encode, load_charset
 from mergen.models.snn_lm import CharSNNLM
+from mergen.models.snn_lm_bpe import BpeSNNLM
 from mergen.utils.device import device_name, get_device
 from mergen.utils.logger import get_logger
 
@@ -24,21 +25,27 @@ if hasattr(sys.stdout, "reconfigure"):
 logger = get_logger("mergen.generate")
 
 
-def load_config() -> dict:
-    """default.yaml ve stage2_char.yaml yapılandırmalarını birleştirir."""
+def load_config(config_file: Optional[str] = None) -> dict:
+    """default.yaml ve ilgili stage config dosyasını birleştirir."""
     configs_dir = Path("configs")
     default_cfg_path = configs_dir / "default.yaml"
-    stage2_cfg_path = configs_dir / "stage2_char.yaml"
+
+    if config_file:
+        stage_cfg_path = Path(config_file)
+    else:
+        stage3_path = configs_dir / "stage3_bpe.yaml"
+        stage2_path = configs_dir / "stage2_char.yaml"
+        stage_cfg_path = stage3_path if stage3_path.exists() else stage2_path
 
     config: Dict = {}
     if default_cfg_path.exists():
         with open(default_cfg_path, "r", encoding="utf-8") as f:
             config.update(yaml.safe_load(f) or {})
 
-    if stage2_cfg_path.exists():
-        with open(stage2_cfg_path, "r", encoding="utf-8") as f:
-            stage2_cfg = yaml.safe_load(f) or {}
-            for k, v in stage2_cfg.items():
+    if stage_cfg_path.exists():
+        with open(stage_cfg_path, "r", encoding="utf-8") as f:
+            stage_cfg = yaml.safe_load(f) or {}
+            for k, v in stage_cfg.items():
                 if isinstance(v, dict) and k in config and isinstance(config[k], dict):
                     config[k].update(v)
                 else:
@@ -84,7 +91,48 @@ def sample_token(
     return torch.multinomial(probs, num_samples=1).item()
 
 
-def generate(
+def generate_bpe(
+    model: torch.nn.Module,
+    prompt: str,
+    tokenizer,
+    device: torch.device,
+    max_new_tokens: int = 60,
+    temperature: float = 0.8,
+    top_k: int = 40,
+    top_p: float = 0.9,
+    block_size: int = 128,
+) -> str:
+    """Byte-Level BPE tokenizer ile sliding window metin üretimi."""
+    model.eval()
+    pad_id = tokenizer.token_to_id("<pad>") or 0
+
+    encoded = tokenizer.encode(prompt)
+    current_ids = list(encoded.ids)
+
+    with torch.no_grad():
+        for _ in range(max_new_tokens):
+            if len(current_ids) < block_size:
+                pad_len = block_size - len(current_ids)
+                window_ids = [pad_id] * pad_len + current_ids
+            else:
+                window_ids = current_ids[-block_size:]
+
+            inp = torch.tensor([window_ids], dtype=torch.long, device=device)
+            logits = model(inp, num_steps=block_size)
+
+            last_logits = logits[0, -1, :]
+            next_id = sample_token(
+                logits=last_logits,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+            )
+            current_ids.append(next_id)
+
+    return tokenizer.decode(current_ids)
+
+
+def generate_char(
     model: torch.nn.Module,
     prompt: str,
     stoi: Dict[str, int],
@@ -94,19 +142,15 @@ def generate(
     temperature: float = 1.0,
     top_k: int = 40,
     top_p: float = 0.9,
-    num_steps: int = 32,
     block_size: int = 32,
 ) -> str:
-    """Sliding window ve Top-k/Top-p/Sıcaklık örneklemesi ile prompt üzerinden yeni karakterler üretir."""
+    """Karakter seviyesinde sliding window metin üretimi."""
     model.eval()
     unk_id = stoi.get("<unk>", 0)
-
-    # 1. Prompt'u encode et
-    current_ids = encode(prompt, stoi)
+    current_ids = char_encode(prompt, stoi)
 
     with torch.no_grad():
         for _ in range(max_new_chars):
-            # 2. Blok boyutuna göre kayan pencere (sliding window) ve pad
             if len(current_ids) < block_size:
                 pad_len = block_size - len(current_ids)
                 window_ids = [unk_id] * pad_len + current_ids
@@ -114,11 +158,8 @@ def generate(
                 window_ids = current_ids[-block_size:]
 
             inp = torch.tensor([window_ids], dtype=torch.long, device=device)
+            logits = model(inp, num_steps=block_size)
 
-            # 3. Model forward
-            logits = model(inp, num_steps=block_size)  # (1, block_size, vocab_size)
-
-            # 4. Son timestep logits'i al ve örnekle
             last_logits = logits[0, -1, :]
             next_id = sample_token(
                 logits=last_logits,
@@ -126,69 +167,22 @@ def generate(
                 top_k=top_k,
                 top_p=top_p,
             )
-
             current_ids.append(next_id)
 
-    # 5. Dönen: decode edilmiş tam metin
-    return decode(current_ids, itos)
-
-
-def run_repl(
-    model: torch.nn.Module,
-    stoi: Dict[str, int],
-    itos: Dict[int, str],
-    device: torch.device,
-    block_size: int,
-    top_k: int,
-    top_p: float,
-):
-    """Kullanıcı ile etkileşimli REPL metin üretim modu."""
-    print("\n" + "=" * 60)
-    print("MERGEN-SNN REPL MODU (Çıkmak için 'q' veya 'exit' yazın)")
-    print("=" * 60)
-    while True:
-        try:
-            prompt = input("\nPrompt > ")
-            if not prompt or prompt.strip().lower() in ("q", "exit"):
-                print("REPL modundan çıkılıyor...")
-                break
-            temp_str = input("Sıcaklık (varsayılan: 0.8) > ").strip()
-            temp = float(temp_str) if temp_str else 0.8
-            length_str = input("Üretilecek karakter sayısı (varsayılan: 100) > ").strip()
-            max_chars = int(length_str) if length_str else 100
-
-            output = generate(
-                model=model,
-                prompt=prompt,
-                stoi=stoi,
-                itos=itos,
-                device=device,
-                max_new_chars=max_chars,
-                temperature=temp,
-                top_k=top_k,
-                top_p=top_p,
-                num_steps=block_size,
-                block_size=block_size,
-            )
-            print("-" * 50)
-            print(output)
-            print("-" * 50)
-        except (KeyboardInterrupt, EOFError):
-            print("\nREPL modundan çıkılıyor...")
-            break
+    return char_decode(current_ids, itos)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Mergen-SNN Metin Üretimi")
-    parser.add_argument("--repl", action="store_true", help="Etkileşimli REPL modunu başlat")
-    parser.add_argument("--prompt", type=str, default=None, help="Özel metin istemi")
+    parser.add_argument("--config", type=str, default=None, help="YAML config dosyası")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Özel checkpoint yolu")
     parser.add_argument("--temperature", type=float, default=None, help="Örnekleme sıcaklığı")
-    parser.add_argument("--top_k", type=int, default=None, help="Top-k parametresi")
-    parser.add_argument("--top_p", type=float, default=None, help="Top-p parametresi")
-    parser.add_argument("--max_chars", type=int, default=None, help="Üretilecek yeni karakter sayısı")
+    parser.add_argument("--top_k", type=int, default=None, help="Top-k")
+    parser.add_argument("--top_p", type=float, default=None, help="Top-p")
+    parser.add_argument("--max_tokens", type=int, default=None, help="Üretilecek token sayısı")
     args = parser.parse_args()
 
-    cfg = load_config()
+    cfg = load_config(args.config)
 
     prefer_device = cfg.get("device", {}).get("prefer", "cpu")
     device = get_device(prefer=prefer_device)
@@ -197,94 +191,105 @@ def main():
     data_dir = Path(cfg.get("paths", {}).get("data_processed", "data/processed"))
     checkpoints_dir = Path(cfg.get("paths", {}).get("checkpoints", "checkpoints"))
 
-    block_size = int(cfg.get("data", {}).get("block_size", 32))
-    embed_dim = int(cfg.get("model", {}).get("embed_dim", 128))
-    hidden_size = int(cfg.get("model", {}).get("hidden_size", 256))
-    beta = float(cfg.get("model", {}).get("beta", 0.9))
-
-    max_new_chars = args.max_chars or int(cfg.get("generation", {}).get("max_new_chars", 80))
-    top_k = args.top_k or int(cfg.get("generation", {}).get("top_k", 40))
-    top_p = args.top_p or float(cfg.get("generation", {}).get("top_p", 0.9))
-    base_temp = args.temperature or float(cfg.get("generation", {}).get("temperature", 1.0))
-
-    # Charset yükle
-    charset_path = data_dir / "charset.json"
-    stoi, itos = load_charset(charset_path)
-    vocab_size = len(stoi)
-
-    # Checkpoint bul ve yükle: lm_best.pt > lm_final.pt > lm_epoch*.pt
-    best_ckpt = checkpoints_dir / "lm_best.pt"
-    final_ckpt = checkpoints_dir / "lm_final.pt"
-
-    if best_ckpt.exists():
-        ckpt_path = best_ckpt
-    elif final_ckpt.exists():
-        ckpt_path = final_ckpt
+    # Checkpoint seçimi: bpe_lm_best > bpe_lm_epoch* > lm_best > lm_epoch*
+    ckpt_path = None
+    if args.checkpoint:
+        ckpt_path = Path(args.checkpoint)
     else:
-        ckpts = sorted(checkpoints_dir.glob("lm_epoch*.pt"))
-        if not ckpts:
-            logger.error(f"Eğitilmiş model checkpoint'i bulunamadı: {checkpoints_dir}")
-            return
-        ckpt_path = ckpts[-1]
+        candidates = [
+            checkpoints_dir / "bpe_lm_best.pt",
+            checkpoints_dir / "bpe_lm_epoch1.pt",
+            checkpoints_dir / "bpe_lm_final.pt",
+            checkpoints_dir / "lm_best.pt",
+            checkpoints_dir / "lm_epoch2.pt",
+            checkpoints_dir / "lm_epoch1.pt",
+        ]
+        for c in candidates:
+            if c.exists():
+                ckpt_path = c
+                break
 
-    logger.info(f"Checkpoint yükleniyor: {ckpt_path} (Cihaz: {dev_name})")
+    if not ckpt_path or not ckpt_path.exists():
+        logger.error(f"Hiçbir checkpoint bulunamadı: {checkpoints_dir}")
+        return
+
+    logger.info(f"Checkpoint yükleniyor: {ckpt_path.name} (Cihaz: {dev_name})")
     checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
 
-    model = CharSNNLM(
-        vocab_size=vocab_size,
-        embed_dim=embed_dim,
-        hidden_size=hidden_size,
-        beta=beta,
-    ).to(device)
+    is_bpe = checkpoint.get("is_bpe", False) or "bpe" in ckpt_path.name.lower()
+    vocab_size = checkpoint.get("vocab_size", 8192 if is_bpe else 460)
+    embed_dim = checkpoint.get("embed_dim", 512 if is_bpe else 128)
+    hidden_size = checkpoint.get("hidden_size", 1024 if is_bpe else 256)
+    beta = checkpoint.get("beta", 0.9)
+
+    block_size = int(cfg.get("data", {}).get("block_size", 128 if is_bpe else 32))
+    temperature = args.temperature or float(cfg.get("generation", {}).get("temperature", 0.8))
+    top_k = args.top_k or int(cfg.get("generation", {}).get("top_k", 40))
+    top_p = args.top_p or float(cfg.get("generation", {}).get("top_p", 0.9))
+    max_new_tokens = args.max_tokens or int(cfg.get("generation", {}).get("max_new_tokens", 60))
+
+    if is_bpe:
+        from tokenizers import Tokenizer
+        tokenizer_path = data_dir / "tokenizer_bpe.json"
+        tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        model = BpeSNNLM(
+            vocab_size=vocab_size,
+            embed_dim=embed_dim,
+            hidden_size=hidden_size,
+            beta=beta,
+        ).to(device)
+    else:
+        charset_path = data_dir / "charset.json"
+        stoi, itos = load_charset(charset_path)
+        model = CharSNNLM(
+            vocab_size=vocab_size,
+            embed_dim=embed_dim,
+            hidden_size=hidden_size,
+            beta=beta,
+        ).to(device)
 
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    if args.repl:
-        run_repl(
-            model=model,
-            stoi=stoi,
-            itos=itos,
-            device=device,
-            block_size=block_size,
-            top_k=top_k,
-            top_p=top_p,
-        )
-        return
-
-    # Çoklu sıcaklık ve prompt testi
-    temperatures = [0.7, 0.8, 0.9, 1.0, 1.2]
     prompts = [
         "Python'da liste",
-        "Algoritma nedir",
-        "Bilgisayar mimarisi",
+        "def train(",
     ]
 
     print("\n" + "=" * 70)
-    print("MERGEN-SNN — STAGE 2 METİN ÜRETİMİ (SNN Dil Modeli)")
-    print(f"Model: {ckpt_path.name} | Top-k: {top_k} | Top-p: {top_p} | max_new_chars: {max_new_chars}")
+    print(f"MERGEN-SNN — {'STAGE 3 BPE (10M)' if is_bpe else 'STAGE 2 CHAR'} METİN ÜRETİMİ")
+    print(f"Model: {ckpt_path.name} | Sıcaklık: {temperature} | Top-k: {top_k} | Top-p: {top_p}")
     print("=" * 70)
 
-    for p_idx, p in enumerate(prompts, 1):
-        print(f"\n{'#' * 70}")
-        print(f"PROMPT {p_idx}: \"{p}\"")
-        print(f"{'#' * 70}")
-        for temp in temperatures:
-            print(f"\n--- Sıcaklık (Temperature): {temp:.1f} ---")
-            generated_text = generate(
+    for i, p in enumerate(prompts, 1):
+        print(f"\n[Örnek {i}]")
+        print(f"Girdi (Prompt) : {p!r}")
+        if is_bpe:
+            out = generate_bpe(
+                model=model,
+                prompt=p,
+                tokenizer=tokenizer,
+                device=device,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                block_size=block_size,
+            )
+        else:
+            out = generate_char(
                 model=model,
                 prompt=p,
                 stoi=stoi,
                 itos=itos,
                 device=device,
-                max_new_chars=max_new_chars,
-                temperature=temp,
+                max_new_chars=max_new_tokens,
+                temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
-                num_steps=block_size,
                 block_size=block_size,
             )
-            print(f"Çıktı:\n{generated_text}")
+        print(f"Çıktı (Üretim) :\n{out}")
         print("-" * 70)
 
 

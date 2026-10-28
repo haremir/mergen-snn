@@ -1,4 +1,4 @@
-"""Mergen-SNN — Stage 2 SNN Dil Modeli Eğitim ve Değerlendirme Fonksiyonları."""
+"""Mergen-SNN — SNN Dil Modeli Eğitim, Değerlendirme ve Planlayıcı Fonksiyonları (Stage 2 & 3)."""
 
 import math
 import time
@@ -13,6 +13,24 @@ from mergen.utils.logger import get_logger
 logger = get_logger("mergen.lm_trainer")
 
 
+def get_cosine_schedule_with_warmup(
+    optimizer: torch.optim.Optimizer,
+    num_warmup_steps: int,
+    num_training_steps: int,
+    min_lr_ratio: float = 0.1,
+) -> torch.optim.lr_scheduler.LambdaLR:
+    """Linear warmup ve ardından Cosine Decay uygulayan klasik LLM öğrenme oranı çizelgeleyicisi."""
+
+    def lr_lambda(current_step: int):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+        return max(min_lr_ratio, cosine_decay * (1.0 - min_lr_ratio) + min_lr_ratio)
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+
 def train_epoch_lm(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -22,10 +40,13 @@ def train_epoch_lm(
     max_steps: Optional[int] = None,
     log_every: int = 500,
     patience_steps: int = 5000,
-) -> Tuple[float, float, float, bool]:
+    clip_grad_norm: Optional[float] = 1.0,
+    scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
+    chars_per_token: float = 3.29,
+) -> Tuple[float, float, float, float, bool]:
     """SNN Dil Modeli için 1 epoch eğitim adımı.
 
-    Dönen: (avg_loss, elapsed_sec, avg_step_sec, early_stopped)
+    Dönen: (avg_loss, avg_bpb, elapsed_sec, avg_step_sec, early_stopped)
     """
     model.train()
     total_loss = 0.0
@@ -39,6 +60,8 @@ def train_epoch_lm(
     steps_without_improvement = 0
     early_stopped = False
 
+    ln2 = math.log(2)
+
     for x, y in loader:
         x = x.to(device)
         y = y.to(device)  # x: (batch, num_steps), y: (batch, num_steps)
@@ -51,7 +74,15 @@ def train_epoch_lm(
 
         optimizer.zero_grad()
         loss.backward()
+
+        # Gradient Clipping (surrogate gradient patlamalarını önler)
+        if clip_grad_norm is not None and clip_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_grad_norm)
+
         optimizer.step()
+
+        if scheduler is not None:
+            scheduler.step()
 
         tokens_in_batch = x.numel()
         batch_loss = loss.item()
@@ -68,15 +99,17 @@ def train_epoch_lm(
 
             curr_loss = total_loss / total_tokens
             curr_ppl = math.exp(min(curr_loss, 20.0))
+            curr_bpb = curr_loss / (ln2 * chars_per_token)
+            curr_lr = optimizer.param_groups[0]["lr"]
 
             logger.info(
                 f"Step {step_count}/{total_steps} | "
-                f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | "
-                f"{steps_per_sec:.0f}step/s"
+                f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | bpb={curr_bpb:.3f} | lr={curr_lr:.6f} | "
+                f"{steps_per_sec:.1f}step/s"
             )
             t_last_log = now
 
-            # Plato kontrolü (5000 step boyunca iyileşme yoksa erken durdur)
+            # Plato kontrolü (patience_steps boyunca iyileşme yoksa erken durdur)
             if curr_loss < best_loss_window - 1e-4:
                 best_loss_window = curr_loss
                 steps_without_improvement = 0
@@ -96,7 +129,8 @@ def train_epoch_lm(
     elapsed = time.time() - t_start
     avg_step_sec = elapsed / max(step_count, 1)
     avg_loss = total_loss / max(total_tokens, 1)
-    return avg_loss, elapsed, avg_step_sec, early_stopped
+    avg_bpb = avg_loss / (ln2 * chars_per_token)
+    return avg_loss, avg_bpb, elapsed, avg_step_sec, early_stopped
 
 
 def eval_epoch_lm(
@@ -105,16 +139,18 @@ def eval_epoch_lm(
     device: torch.device,
     num_steps: int = 32,
     max_steps: Optional[int] = None,
-) -> Tuple[float, float]:
+    chars_per_token: float = 3.29,
+) -> Tuple[float, float, float]:
     """SNN Dil Modeli için 1 epoch değerlendirme adımı.
 
-    Dönen: (avg_loss, elapsed_sec)
+    Dönen: (avg_loss, avg_bpb, elapsed_sec)
     """
     model.eval()
     total_loss = 0.0
     total_tokens = 0
     step_count = 0
     t_start = time.time()
+    ln2 = math.log(2)
 
     with torch.no_grad():
         for x, y in loader:
@@ -137,4 +173,5 @@ def eval_epoch_lm(
 
     elapsed = time.time() - t_start
     avg_loss = total_loss / max(total_tokens, 1)
-    return avg_loss, elapsed
+    avg_bpb = avg_loss / (ln2 * chars_per_token)
+    return avg_loss, avg_bpb, elapsed

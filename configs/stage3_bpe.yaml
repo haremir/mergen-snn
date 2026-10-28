@@ -1,0 +1,41 @@
+defaults:
+  - default
+
+device:
+  prefer: cpu
+
+data:
+  name: bpe_lm
+  block_size: 128
+  batch_size: 32  # Bellek sınırı için 32'de tutuyoruz
+  train_bin: data/processed/bpe_train.bin
+  val_bin: data/processed/bpe_val.bin
+  tokenizer_path: data/processed/tokenizer_bpe.json
+
+model:
+  name: bpe_snn_lm
+  vocab_size: 8192
+  embed_dim: 512
+  hidden_size: 1024
+  beta: 0.9
+  num_steps: 128
+
+training:
+  epochs: 1
+  learning_rate: 0.003
+  optimizer: sgd
+  foreach: false
+  momentum: 0.9
+  clip_grad_norm: 1.0
+  warmup_steps: 500
+  max_steps_per_epoch: 500  # Kısa test için 500 adım
+  log_every: 100
+  checkpoint_dir: checkpoints
+  chars_per_token: 3.29
+  resume: false
+
+generation:
+  max_new_tokens: 60
+  temperature: 0.8
+  top_k: 40
+  top_p: 0.9
