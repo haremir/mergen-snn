@@ -23,6 +23,8 @@ dependencies = [
     "lxml",
     "pypdf",
     "tokenizers",
+    "cython",
+    "setuptools",
 ]
 
 [project.optional-dependencies]
