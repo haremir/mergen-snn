@@ -46,6 +46,7 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 !data/processed/charset.json
+!data/processed/tokenizer_bpe.json
 
 # Ensure uv.lock is committed
 !uv.lock
