@@ -7,11 +7,14 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
 ## Karar Özeti Tablosu
 
 | # | Karar Konusu | Alınan Karar | Karar Tarihi | Durum |
-| :-: | :--- | :--- | :-: | :-: |
+| :-: | :--- | :--- | :--- | :-: |
 | **01** | **Donanım Arka Ucu & Optimizatör** | DirectML üzerinde varsayılan olarak **SGD (`momentum=0.9`, `foreach=False`)** kullanımı | 2026-10-27 | ✅ Kabul Edildi |
 | **02** | **Karakter LM Girdi Temsili** | Aşama 2'ye **One-Hot → LIF** ile başlanması, ardından **Embedding → Spike**'a geçilmesi | 2026-10-27 | ✅ Kabul Edildi |
 | **03** | **Bağlam ve Model Mimarisi** | Aşama 2'de **Sabit Pencereli Spiking RNN**, Aşama 3'te **SpikeGPT/Spikformer** mimarisi | 2026-10-27 | ✅ Kabul Edildi |
 | **04** | **Stage 2 Donanım Seçimi: CPU vs DirectML** | Stage 2 model boyutunda (275K parametre), sequential LIF döngüsü için **CPU kullanımı** (8x daha hızlı) | 2026-10-28 | ✅ Kabul Edildi |
+| **05** | **Klasik Transformer Yerine SNN Tercihi** | Donanım kısıtları (AMD RX 580 + CPU) ve enerji/hesaplama verimliliği nedeniyle **SNN mimarisinin seçilmesi** | 2026-10-28 | ✅ Kabul Edildi |
+| **06** | **Model Ölçekleme: Mergen-Tiny (10M)** | 275K PoC modelindeki plato sonrası dil öğrenimi için minimum **~10M parametre ölçeğinin hedeflenmesi** | 2026-10-28 | ✅ Kabul Edildi |
+| **07** | **Tokenizasyon Dönüşümü: Byte-Level BPE** | Char-level (460 vocab) yerine kod ve CS metinlerini temsil edecek **Byte-Level BPE Tokenizer'a geçilmesi (PDF B08)** | 2026-10-28 | ✅ Kabul Edildi |
 
 ---
 
@@ -50,3 +53,29 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
 - **Bulgular & Ölçüm:** Stage 2 model boyutunda (275K parametre), CPU (61ms/step) DirectML'den (492ms/step) 8x daha hızlıdır.
 - **Gerekçe:** 32 timestep sequential LIF döngüsü GPU'da paralelleştirilememekte, DirectML kernel launch overhead'i kazancı yutmaktadır. Bu nedenle Aşama 2 eğitiminde CPU tercih edilmiştir.
 - **Gelecek Planı:** Stage 3'te model >5M parametreye ulaştığında ve matris boyutları büyüdüğünde DirectML tekrar test edilecektir.
+
+---
+
+### ADR 05: Donanım Kısıtları Nedeniyle Klasik Transformer Yerine SNN Tercihi
+- **Bağlam:** Tüketici sınıfı donanım (AMD Radeon RX 580 8GB + çok çekirdekli CPU) ortamında standart yoğun Transformer modelleri (özellikle $O(L^2)$ öz-dikkat matrisleri ve yoğun aktivasyonlar) yüksek bellek ve hesaplama maliyeti yaratmaktadır.
+- **Alternatifler:**
+  1. Klasik yoğun Transformer (GPT-2, LLaMA-mini).
+  2. Seyrek Dikkat (Sparse Attention / Linformer).
+  3. Biyolojik esintili Spiking Neural Network (SNN).
+- **Sonuç & Gerekçe:** SNN'lerin olay tabanlı (event-driven) seyrek ateşleme dinamiği, çarpma yerine toplama (MAC yerine AC) yapısı ve zaman boyutundaki hafıza yeteneği; yerel donanımda yüksek enerji/hesaplama verimliliği sunar. Bu nedenle proje genelinde SNN omurgası esas alınmıştır.
+
+---
+
+### ADR 06: Model Ölçekleme: Mergen-Tiny (~10M Parametre) Hedefi
+- **Bağlam:** Aşama 2'de 275K parametreli `CharSNNLM` modeli 93M token üzerinde 102.756 adım eğitilmiş, ancak Train loss 2.56 ve Val loss 2.66 seviyesinde plato yapmıştır. Model kelime köklerini ve noktalama biçimlerini öğrenmesine rağmen kapasite yetersizliği sebebiyle anlamlı cümleler kuramamıştır.
+- **Sonuç & Gerekçe:** Ampirik bulgular, doğal dilin sözdizimsel ve anlamsal hiyerarşisini öğrenebilmek için model kapasitesinin minimum **~10M parametre (Mergen-Tiny)** seviyesine çıkarılması gerektiğini göstermiştir. Aşama 3 bu ölçekleme hedefiyle yürütülecektir.
+
+---
+
+### ADR 07: Karakter Düzeyinden Byte-Level BPE Tokenizer'a Geçiş (PDF B08)
+- **Bağlam:** Aşama 2'de kullanılan karakter seviyesi tokenizasyon (460 vocab), `block_size = 32` penceresinde yalnızca 5-6 kelimelik çok dar bir bağlam aralığı sunmakta ve modelin uzun menzilli CS kavramlarını öğrenmesini engellemektedir.
+- **Alternatifler:**
+  1. Karakter düzeyinde bağlam penceresini $L=256$'ya çıkarmak (hesaplama maliyeti $8\times$ artar).
+  2. Kelime düzeyinde tokenizer (büyük sözlük boyutu ve OOV problemleri).
+  3. Byte-Level BPE (Byte-Pair Encoding) Tokenizer (PDF B08 spesifikasyonu).
+- **Sonuç & Gerekçe:** Byte-Level BPE; Python/C++ kod sözdizimini, özel anahtar kelimeleri ve teknik İngilizce terimleri sıkıştırılmış alt-kelime dizileri halinde temsil eder. Bu geçiş, aynı bağlam uzunluğunda modele yaklaşık 4-5 kat daha geniş bir anlamsal görüş açısı kazandıracaktır.

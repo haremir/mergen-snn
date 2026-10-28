@@ -7,8 +7,8 @@ Mergen-SNN projesinin hedefleri dört ana aşamada yürütülmektedir:
 ## 🗺️ Aşama Takvimi
 
 ```text
-[Aşama 1: Doğrulama] ───► [Aşama 2: Char-LM] ───► [Aşama 3: CS Korpusu & SpikeGPT] ───► [Aşama 4: Ölçekleme & Cython]
-       ✅ Tamamlandı             ⏳ Sırada                      📋 Planlandı                         📋 Planlandı
+[Aşama 1: Doğrulama] ───► [Aşama 2: Char-LM PoC] ───► [Aşama 3: Ölçekleme & Optimizasyon] ───► [Aşama 4: Metrik & RAG]
+       ✅ Tamamlandı              ✅ Tamamlandı                      ⏳ Sırada                         📋 Planlandı
 ```
 
 ---
@@ -24,26 +24,28 @@ Mergen-SNN projesinin hedefleri dört ana aşamada yürütülmektedir:
 
 ---
 
-### Aşama 2: Karakter Düzeyinde Spiking Dil Modeli ⏳ (Sıradaki Aşama)
-- [ ] Karakter seviyesinde metin veri yükleyicisi (Shakespeare / mini-CS metinleri).
-- [ ] Girdi temsili: Sabit bağlam pencereli (ör. $L=64$) One-Hot → LIF kodlaması.
-- [ ] Tekrarlayan Spiking Sinir Ağı (Spiking RNN / Recurrent LIF) mimarisi.
-- [ ] Bir sonraki karakter tahmin kaybı (Next-token prediction cross-entropy).
-- [ ] Sıcaklık (temperature) parametreli spiking metin üretim (sampling) arayüzü.
+### Aşama 2: Karakter Seviyesinde SNN PoC ✅ (Tamamlandı)
+- [x] 93 MB'lık 16 kategorili CS korpusunun indirilmesi ve temizlenmesi (`prepare_data.py`).
+- [x] C0/C1 kontrol karakterlerinin ayıklanması, ligatür normalizasyonu, Türkçe karakter garantili 460 vocab'lık `charset.json` üretimi.
+- [x] Sabit bağlam pencereli `CharDataset` ve token akışı boru hattı.
+- [x] 275K parametreli `CharSNNLM` mimarisi (Embedding → 2x LIF → FC).
+- [x] CPU üzerinde tam külliyat eğitimi (~71 dakika, 102.756 adım).
+- [x] Top-k ($k=40$) ve Top-p ($p=0.9$) sıcaklık örneklemeli `generate.py` arayüzü ve REPL modu.
+- [x] **Sonuç:** Train loss 2.56, val loss 2.66 (PPL 13.35). Model kelime köklerini (`ing`, `the`, `func`, `there`) öğrendi; kapasite limiti (275K) ve plato ampirik olarak doğrulandı.
 
 ---
 
-### Aşama 3: CS Uzmanlaşma ve Transformer Tabanlı SNN 📋 (Planlandı)
-- [ ] Bilgisayar Bilimleri külliyatının indirilmesi ve ön işlenmesi (`scripts/fetch_corpus.py`).
-- [ ] BPE / WordPiece alt-kelime (subword) tokenizer eğitimi (`data/tokenizers/`).
-- [ ] Embedding → Zaman adımı spike dönüştürücü modülü.
-- [ ] Spikformer / SpikeGPT benzeri spike tabanlı dikkat (Spiking Self-Attention) blokları.
-- [ ] CS kavram ve kod blokları üzerinde üretim kalitesinin ölçülmesi.
+### Aşama 3: Ölçekleme ve Optimizasyon (Mergen-Tiny) ⏳ (Sıradaki Aşama)
+- [ ] **BPE Tokenizer:** Char-level (460 vocab) yerine kod ve CS metinlerini temsil edecek Byte-Level BPE Tokenizer'a geçiş (`data/tokenizers/`).
+- [ ] **10M Model Ölçeklemesi (Mergen-Tiny):** Model parametre kapasitesinin ~10M parametreye çıkarılması.
+- [ ] **Klasik LLM Eğitim Disiplini:** Gradient clipping, LR warmup, cosine decay öğrenme oranı çizelgeleyici, checkpointing ve BPB (Bits-Per-Byte) takibi.
+- [ ] **Cython Hesaplama Motoru:** Matris çarpımı (matmul) ve sequential LIF membran güncelleme döngülerinin Cython C-uzantıları (`src/mergen/cython_ext/`) ile hızlandırılması.
+- [ ] **Donanım Değerlendirmesi:** Büyüyen matris boyutlarıyla DirectML GPU hızlandırmasının (>5M param) tekrar test edilmesi.
 
 ---
 
-### Aşama 4: Değerlendirme, Seyreklik ve Cython Uzantıları 📋 (Planlandı)
-- [ ] Modelin nöron ateşleme seyreklik oranlarının (sparsity ratio) ve teorik enerji tüketiminin ölçülmesi.
-- [ ] Kritik nöron simülasyon döngüleri için Cython C-extension optimizasyonu (`src/mergen/cython_ext/`).
-- [ ] CPU vs DirectML vs Cython çıkarım (inference) hız kıyaslamaları.
-- [ ] Standart küçük ANN modelleriyle (LSTM, GPT-mini) enerji/performans karşılaştırması.
+### Aşama 4: Metrik Standardizasyonu ve RAG Entegrasyonu 📋 (Planlandı)
+- [ ] **Seyreklik ve Enerji Metrikleri:** Nöron ateşleme seyreklik oranlarının (sparsity ratio) ve teorik nöromorfik enerji tüketiminin ölçülmesi.
+- [ ] **RAG Altyapısı:** CS dokümantasyonu, man sayfaları ve teknik kitaplar için hafif yerel vektör dizini (Retrieval-Augmented Generation).
+- [ ] **Araç ve Fonksiyon Entegrasyonu:** Kod sözdizimi denetimi ve komut çalıştırma araçlarıyla modelin zenginleştirilmesi.
+- [ ] **Karşılaştırma (Benchmark):** Standart küçük ANN/Transformer modelleriyle (NanoGPT, Tiny-LLaMA) doğruluk, enerji ve çıkarım hızı kıyaslamaları.

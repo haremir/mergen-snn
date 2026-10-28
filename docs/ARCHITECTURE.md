@@ -95,3 +95,19 @@ Mergen-SNN'in nihai amacı, standart tüketici donanımında (CPU / DirectML) so
 
 - **Aşama 2:** Karakter düzeyinde (char-level), sabit bağlam pencereli Spiking RNN / LIF mimarisi.
 - **Aşama 3:** Alt-kelime (Subword) tokenizer ve Transformer tabanlı SNN mimarileri (SpikeGPT / Spikformer yaklaşımları).
+
+---
+
+## 6. Gelecek Vizyonu: Klasik LLM Disiplini + SNN Verimliliği
+
+Kendi Cython motorumuzla çalışan, BPE tokenizer kullanan, ~10M parametreli bir SNN dil modeli (**Mergen-Tiny**). Eğitimde klasik LLM disiplini (gradient clipping, LR warmup, checkpointing, BPB takibi) uygulanacak. RAG ve araçlarla güçlendirilecek.
+
+### 6.1. Temel Yapıtaşları
+1. **Özel Hesaplama Motoru (Cython):** Matris çarpımları (matmul) ve zaman adımlı sequential LIF membran güncellemeleri C-seviyesinde optimize edilerek Python döngü yükü sıfırlanacaktır.
+2. **Byte-Level BPE Tokenizer:** 460 karakterlik sözlükten ~8K-16K alt-kelime (subword) sözlüğüne geçilerek bağlam penceresi genişletilecek; kod yapıları ve CS terimleri daha etkin temsil edilecektir.
+3. **10M Parametre Ölçeği (Mergen-Tiny):** 275K kapasite sınırını aşarak sözdizimsel ve anlamsal temsili mümkün kılacak minimum ölçek.
+4. **Klasik LLM Eğitim Disiplini:**
+   - **Gradient Clipping:** SNN'lerde zamanla biriken surrogate gradyan patlamalarını önleme.
+   - **Öğrenme Oranı Isınması (LR Warmup) & Cosine Decay:** Kararlı optimizasyon akışı.
+   - **Bits-Per-Byte (BPB) & Cross-Entropy Takibi:** Karakter ve BPE seviyesinde adil kıyaslama metrikleri.
+5. **RAG ve Araç Güçlendirmesi:** Hafif yerel vektör indeksi (CS dokümantasyonu, kılavuzlar) ve kod sözdizim denetleyicileri ile desteklenmiş çıkarım.
