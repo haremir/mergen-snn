@@ -8,10 +8,12 @@ BASE_DIR = Path(__file__).resolve().parent
 pyx_path = str(BASE_DIR / "fast_lif.pyx")
 
 extra_compile_args = []
+extra_link_args = []
 if sys.platform == "win32":
-    extra_compile_args = ["/O2", "/fp:fast"]
+    extra_compile_args = ["/O2", "/fp:fast", "/openmp"]
 else:
-    extra_compile_args = ["-O3", "-ffast-math"]
+    extra_compile_args = ["-O3", "-ffast-math", "-fopenmp"]
+    extra_link_args = ["-fopenmp"]
 
 ext_modules = [
     Extension(
@@ -20,6 +22,7 @@ ext_modules = [
         include_dirs=[np.get_include()],
         language="c++",
         extra_compile_args=extra_compile_args,
+        extra_link_args=extra_link_args,
     )
 ]
 

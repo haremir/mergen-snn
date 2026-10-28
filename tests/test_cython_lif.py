@@ -5,8 +5,17 @@ import snntorch as snn
 import torch
 import torch.nn.functional as F
 
-from mergen.cython_ext.fast_lif import fast_lif_forward
-from mergen.models.snn_lm_bpe import BpeSNNLM, FastLeaky, FastLIFFunction
+from mergen.cython_ext.fast_lif import (
+    fast_lif_forward,
+    fast_lif_sequence_backward,
+    fast_lif_sequence_forward,
+)
+from mergen.models.snn_lm_bpe import (
+    BpeSNNLM,
+    FastLeaky,
+    FastLIFFunction,
+    FastLIFSequence,
+)
 
 
 def test_cython_fast_lif_forward_kernel():
@@ -63,6 +72,40 @@ def test_fast_leaky_vs_snntorch_equivalence():
     spk_slow, _ = slow(x, mem_slow)
 
     assert torch.equal(spk_fast, spk_slow)
+
+
+def test_sequence_lif_vs_loop_equivalence():
+    """FastLIFSequence hem ileri (spikes) hem geri (gradients) geçişte döngü modeliyle tam örtüşmeli."""
+    B, T, H = 4, 16, 8
+    torch.manual_seed(42)
+    x1 = torch.randn(B, T, H, requires_grad=True)
+    mem_init1 = torch.randn(B, H, requires_grad=True)
+
+    torch.manual_seed(42)
+    x2 = torch.randn(B, T, H, requires_grad=True)
+    mem_init2 = torch.randn(B, H, requires_grad=True)
+
+    # 1. Döngülü model (FastLeaky step-by-step)
+    layer = FastLeaky(beta=0.9, threshold=1.0)
+    mem = mem_init1
+    spk_list = []
+    for t in range(T):
+        spk, mem = layer(x1[:, t, :].contiguous(), mem)
+        spk_list.append(spk)
+    spk_loop = torch.stack(spk_list, dim=1)
+    loss_loop = (spk_loop * 2.5).sum() + mem.sum() * 0.3
+    loss_loop.backward()
+
+    # 2. Sequence model (Cython tek çağrı)
+    spk_seq, mem_last_seq = FastLIFSequence.apply(x2, mem_init2, 0.9, 1.0)
+    loss_seq = (spk_seq * 2.5).sum() + mem_last_seq.sum() * 0.3
+    loss_seq.backward()
+
+    # İleri ve geri geçiş doğrulaması
+    assert torch.equal(spk_loop, spk_seq)
+    assert torch.allclose(mem, mem_last_seq, atol=1e-5)
+    assert torch.allclose(x1.grad, x2.grad, atol=1e-5)
+    assert torch.allclose(mem_init1.grad, mem_init2.grad, atol=1e-5)
 
 
 def test_bpe_snn_lm_modes():
