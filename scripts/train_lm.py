@@ -1,8 +1,10 @@
 """Mergen-SNN — SNN Dil Modeli Eğitim Scripti (Stage 2 Char & Stage 3 BPE)."""
 
-import argparse
-import math
 import os
+os.environ["OMP_NUM_THREADS"] = "6"
+os.environ["MKL_NUM_THREADS"] = "6"
+
+import argparse
 from pathlib import Path
 import sys
 import time

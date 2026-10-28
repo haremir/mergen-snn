@@ -1,8 +1,10 @@
 """Mergen-SNN — Stage 3: BPE Tabanlı SNN Dil Modeli (Mergen-Pico, ~14M Parametre)."""
 
+import math
 import snntorch as snn
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 try:
     from mergen.cython_ext.fast_lif import (
@@ -14,6 +16,11 @@ except ImportError:
     fast_lif_forward = None
     fast_lif_sequence_forward = None
     fast_lif_sequence_backward = None
+
+try:
+    from mergen.cython_ext.fast_gemm import fast_gemm_forward
+except ImportError:
+    fast_gemm_forward = None
 
 
 class FastLIFFunction(torch.autograd.Function):
@@ -161,11 +168,87 @@ class FastLeaky(nn.Module):
         self, input_: torch.Tensor, mem: torch.Tensor = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if input_.dim() == 3:
-            # Dizi girişi: (batch, num_steps, hidden)
             return FastLIFSequence.apply(input_, mem, self.beta, self.threshold)
         if mem is None or mem.numel() == 0 or mem.shape != input_.shape:
             mem = torch.zeros_like(input_)
         return FastLIFFunction.apply(input_, mem, self.beta, self.threshold)
+
+
+class FastLinearFunction(torch.autograd.Function):
+    """Cython AVX2 SIMD GEMM ileri ve geri yayılım autograd fonksiyonu."""
+
+    @staticmethod
+    def forward(ctx, x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor = None):
+        ctx.save_for_backward(x, weight, bias)
+        x_c = x.contiguous().float()
+        orig_shape = x_c.shape
+        in_features = orig_shape[-1]
+        out_features = weight.size(0)
+
+        x_2d = x_c.view(-1, in_features)
+        w_2d = weight.contiguous().float()
+        b_1d = bias.contiguous().float() if bias is not None else None
+
+        out_np = fast_gemm_forward(x_2d.numpy(), w_2d.numpy(), b_1d, transposed_b=True)
+        out_t = torch.from_numpy(out_np)
+
+        if len(orig_shape) > 2:
+            out_t = out_t.view(*orig_shape[:-1], out_features)
+
+        return out_t
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        x, weight, bias = ctx.saved_tensors
+        grad_output_c = grad_output.contiguous().float()
+        orig_shape = x.shape
+        in_features = orig_shape[-1]
+        out_features = weight.size(0)
+
+        grad_2d = grad_output_c.view(-1, out_features)
+        x_2d = x.contiguous().float().view(-1, in_features)
+        w_2d = weight.contiguous().float()
+
+        # grad_x = grad_output @ weight (transposed_b=False)
+        grad_x_np = fast_gemm_forward(grad_2d.numpy(), w_2d.numpy(), transposed_b=False)
+        grad_x = torch.from_numpy(grad_x_np).view(*orig_shape)
+
+        # grad_weight = grad_output.T @ x (transposed_b=False)
+        grad_w_np = fast_gemm_forward(grad_2d.t().numpy(), x_2d.numpy(), transposed_b=False)
+        grad_weight = torch.from_numpy(grad_w_np)
+
+        grad_bias = None
+        if bias is not None:
+            grad_bias = grad_2d.sum(dim=0)
+
+        return grad_x, grad_weight, grad_bias
+
+
+class FastLinear(nn.Module):
+    """Cython AVX2 SIMD GEMM hızlandırmalı Lineer katman."""
+
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty((out_features, in_features), dtype=torch.float32))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_features, dtype=torch.float32))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if fast_gemm_forward is not None:
+            return FastLinearFunction.apply(x, self.weight, self.bias)
+        return F.linear(x, self.weight, self.bias)
 
 
 class BpeSNNLM(nn.Module):
@@ -174,7 +257,7 @@ class BpeSNNLM(nn.Module):
     Her timestep bir BPE alt-kelimesi (token) işler.
     LIF membran potansiyelleri zaman boyunca taşınarak bağlam korunur.
     Embedding çıkışı FC1 ve FC2 katmanları ile LIF nöronları üzerinden iletilir.
-    Cython Sequence LIF ile döngüsüz yüksek hızlı hesaplama sağlar.
+    Cython Sequence LIF ve isteğe bağlı Cython FastLinear ile çalışabilir.
     """
 
     def __init__(
@@ -184,6 +267,7 @@ class BpeSNNLM(nn.Module):
         hidden_size: int = 1024,
         beta: float = 0.9,
         use_cython: bool = True,
+        use_fast_linear: bool = False,
     ):
         super().__init__()
         self.vocab_size = vocab_size
@@ -191,9 +275,12 @@ class BpeSNNLM(nn.Module):
         self.hidden_size = hidden_size
         self.beta = beta
         self.use_cython = use_cython and (fast_lif_sequence_forward is not None)
+        self.use_fast_linear = use_fast_linear and (fast_gemm_forward is not None)
+
+        linear_cls = FastLinear if self.use_fast_linear else nn.Linear
 
         self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.fc1 = nn.Linear(embed_dim, hidden_size)
+        self.fc1 = linear_cls(embed_dim, hidden_size)
 
         if self.use_cython:
             self.lif1 = FastLeaky(beta=beta)
@@ -202,8 +289,8 @@ class BpeSNNLM(nn.Module):
             self.lif1 = snn.Leaky(beta=beta)
             self.lif2 = snn.Leaky(beta=beta)
 
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc_out = nn.Linear(hidden_size, vocab_size)
+        self.fc2 = linear_cls(hidden_size, hidden_size)
+        self.fc_out = linear_cls(hidden_size, vocab_size)
 
     def forward(self, input_ids: torch.Tensor, num_steps: int = 64) -> torch.Tensor:
         emb = self.embedding(input_ids)  # (batch, num_steps, embed_dim)

@@ -1,10 +1,14 @@
-"""Mergen-SNN — Stage 3: Eski (Python Döngülü) vs Yeni (Cython Sequence LIF) Benchmark.
+"""Mergen-SNN — Stage 3: PyTorch Linear vs Cython FastLinear (AVX2 GEMM) Benchmark.
 
 10 eğitim adımı (batch=64, seq_len=64, vocab=8192) üzerinden:
-- Eski model: Python for döngüsü ile işletilen LIF modeli
-- Yeni model: Tek Cython çağrısı ile işletilen FastLIFSequence modeli
-karşılaştırılır ve hızlanma oranı hesaplanır.
+- PyTorch Linear (MKL/oneDNN BLAS) + Cython FastLIFSequence
+- Cython FastLinear (AVX2 SIMD GEMM) + Cython FastLIFSequence
+karşılaştırılır ve adım süreleri raporlanır.
 """
+
+import os
+os.environ["OMP_NUM_THREADS"] = "6"
+os.environ["MKL_NUM_THREADS"] = "6"
 
 import sys
 import time
@@ -20,32 +24,37 @@ from mergen.models.snn_lm_bpe import BpeSNNLM
 
 def run_benchmark(steps: int = 10, batch_size: int = 64, seq_len: int = 64):
     print("=" * 70)
-    print(" MERGEN-SNN BENCHMARK: Eski (Python Döngülü) vs Yeni (Cython Sequence LIF)")
+    print(" MERGEN-SNN GEMM BENCHMARK: PyTorch Linear vs Cython FastLinear (AVX2)")
     print(f" Ayarlar: Batch={batch_size}, Seq={seq_len}, Timesteps={seq_len}, Steps={steps}")
+    print(f" Thread Ayarı: OMP={os.environ.get('OMP_NUM_THREADS')}, MKL={os.environ.get('MKL_NUM_THREADS')}")
     print("=" * 70)
 
     torch.manual_seed(42)
     device = torch.device("cpu")
 
     print("\nModeller yükleniyor (14M BpeSNNLM)...")
-    model_old = BpeSNNLM(
-        vocab_size=8192,
-        embed_dim=512,
-        hidden_size=1024,
-        beta=0.9,
-        use_cython=False,
-    ).to(device)
-
-    model_new = BpeSNNLM(
+    # Model 1: PyTorch BLAS Linear + Cython FastLIFSequence
+    model_pytorch = BpeSNNLM(
         vocab_size=8192,
         embed_dim=512,
         hidden_size=1024,
         beta=0.9,
         use_cython=True,
+        use_fast_linear=False,
     ).to(device)
 
-    opt_old = torch.optim.SGD(model_old.parameters(), lr=0.003, momentum=0.9)
-    opt_new = torch.optim.SGD(model_new.parameters(), lr=0.003, momentum=0.9)
+    # Model 2: Cython FastLinear (AVX2 GEMM) + Cython FastLIFSequence
+    model_fast_linear = BpeSNNLM(
+        vocab_size=8192,
+        embed_dim=512,
+        hidden_size=1024,
+        beta=0.9,
+        use_cython=True,
+        use_fast_linear=True,
+    ).to(device)
+
+    opt_pytorch = torch.optim.SGD(model_pytorch.parameters(), lr=0.003, momentum=0.9)
+    opt_fast = torch.optim.SGD(model_fast_linear.parameters(), lr=0.003, momentum=0.9)
 
     # Sentetik veri
     x = torch.randint(0, 8192, (batch_size, seq_len), device=device)
@@ -53,60 +62,60 @@ def run_benchmark(steps: int = 10, batch_size: int = 64, seq_len: int = 64):
 
     # 1. Warm-up
     print("Isınma adımları (warm-up) çalıştırılıyor...")
-    out = model_old(x, num_steps=seq_len)
+    out = model_pytorch(x, num_steps=seq_len)
     loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
     loss.backward()
-    opt_old.step()
-    opt_old.zero_grad()
+    opt_pytorch.step()
+    opt_pytorch.zero_grad()
 
-    out = model_new(x, num_steps=seq_len)
+    out = model_fast_linear(x, num_steps=seq_len)
     loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
     loss.backward()
-    opt_new.step()
-    opt_new.zero_grad()
+    opt_fast.step()
+    opt_fast.zero_grad()
 
-    # 2. Eski Model Ölçümü
-    print("\n[1/2] Eski Model (Python Döngülü) Test Ediliyor (10 adım)...")
-    old_times = []
+    # 2. PyTorch Linear Ölçümü
+    print("\n[1/2] PyTorch Linear Modeli Test Ediliyor (10 adım)...")
+    pytorch_times = []
     for step in range(1, steps + 1):
         t0 = time.perf_counter()
-        opt_old.zero_grad()
-        out = model_old(x, num_steps=seq_len)
+        opt_pytorch.zero_grad()
+        out = model_pytorch(x, num_steps=seq_len)
         loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
         loss.backward()
-        opt_old.step()
+        opt_pytorch.step()
         dt = time.perf_counter() - t0
-        old_times.append(dt)
+        pytorch_times.append(dt)
         print(f"  Step {step:2d}/10: {dt:.4f} s")
 
-    # 3. Yeni Vektörize Model Ölçümü
-    print("\n[2/2] Yeni Model (Cython Sequence LIF) Test Ediliyor (10 adım)...")
-    new_times = []
+    # 3. Cython FastLinear Ölçümü
+    print("\n[2/2] Cython FastLinear (AVX2 GEMM) Modeli Test Ediliyor (10 adım)...")
+    fast_times = []
     for step in range(1, steps + 1):
         t0 = time.perf_counter()
-        opt_new.zero_grad()
-        out = model_new(x, num_steps=seq_len)
+        opt_fast.zero_grad()
+        out = model_fast_linear(x, num_steps=seq_len)
         loss = F.cross_entropy(out.reshape(-1, 8192), y.reshape(-1))
         loss.backward()
-        opt_new.step()
+        opt_fast.step()
         dt = time.perf_counter() - t0
-        new_times.append(dt)
+        fast_times.append(dt)
         print(f"  Step {step:2d}/10: {dt:.4f} s")
 
     # Sonuçlar
-    avg_old = sum(old_times) / len(old_times)
-    avg_new = sum(new_times) / len(new_times)
-    speedup = avg_old / avg_new
+    avg_pytorch = sum(pytorch_times) / len(pytorch_times)
+    avg_fast = sum(fast_times) / len(fast_times)
+    speedup = avg_pytorch / avg_fast
 
     print("\n" + "=" * 70)
     print(" BENCHMARK SONUÇLARI")
     print("=" * 70)
-    print(f" Eski Model Süresi (Python Döngülü, ort. 1 step): {avg_old:.4f} s")
-    print(f" Yeni Model Süresi (Cython Sequence, ort. 1 step): {avg_new:.4f} s")
-    print(f" Hızlanma Oranı (Speedup)                         : {speedup:.2f}x ({speedup:.2f} kat hızlandı)")
+    print(f" PyTorch Linear Süresi (ort. 1 step)       : {avg_pytorch:.4f} s")
+    print(f" Cython FastLinear Süresi (ort. 1 step)    : {avg_fast:.4f} s")
+    print(f" Hızlanma / Karşılaştırma Oranı (Speedup) : {speedup:.2f}x")
     print("=" * 70)
 
-    return avg_old, avg_new, speedup
+    return avg_pytorch, avg_fast, speedup
 
 
 if __name__ == "__main__":
