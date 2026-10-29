@@ -23,12 +23,12 @@ model:
 
 training:
   epochs: 8
-  learning_rate: 0.003
+  learning_rate: 0.0005
   optimizer: sgd
   foreach: false
   momentum: 0.9
   clip_grad_norm: 1.0
-  warmup_steps: 500
+  warmup_steps: 1000
   max_steps_per_epoch: null
   log_every: 500
   checkpoint_dir: checkpoints
