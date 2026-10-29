@@ -110,6 +110,8 @@ def main():
     clip_grad_norm = float(cfg.get("training", {}).get("clip_grad_norm", 1.0))
     warmup_steps = int(cfg.get("training", {}).get("warmup_steps", 500))
     chars_per_token = float(cfg.get("training", {}).get("chars_per_token", 3.29 if is_bpe else 1.0))
+    optimizer_name = str(cfg.get("training", {}).get("optimizer", "sgd")).lower()
+    early_stop_patience = int(cfg.get("training", {}).get("early_stop_patience", 3000))
 
     max_steps_per_epoch = args.max_steps or cfg.get("training", {}).get("max_steps_per_epoch", None)
     if max_steps_per_epoch is not None:
@@ -188,13 +190,19 @@ def main():
     logger.info(f"Eğitim: batch_size={batch_size}, num_steps={num_steps}, epochs={epochs}, lr={lr}")
     logger.info(f"Adım Sınırı (max_steps_per_epoch): {max_steps_per_epoch}")
 
-    # Optimizatör: SGD
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=lr,
-        momentum=momentum,
-        foreach=foreach,
-    )
+    # Optimizatör: Adam veya SGD
+    if optimizer_name == "adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=lr,
+        )
+    else:
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=lr,
+            momentum=momentum,
+            foreach=foreach,
+        )
 
     # Öğrenme Oranı Planlayıcısı (Warmup + Cosine Decay)
     steps_per_epoch = max_steps_per_epoch if max_steps_per_epoch is not None else len(train_loader)
@@ -240,7 +248,7 @@ def main():
             num_steps=num_steps,
             max_steps=max_steps_per_epoch,
             log_every=log_every,
-            patience_steps=5000,
+            patience_steps=early_stop_patience,
             clip_grad_norm=clip_grad_norm,
             scheduler=scheduler,
             chars_per_token=chars_per_token,

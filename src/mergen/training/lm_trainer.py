@@ -61,12 +61,18 @@ def train_epoch_lm(
     early_stopped = False
 
     ln2 = math.log(2)
+    last_spk2_ratio = None
 
     for x, y in loader:
         x = x.to(device)
         y = y.to(device)  # x: (batch, num_steps), y: (batch, num_steps)
 
-        logits = model(x, num_steps)  # (batch, num_steps, vocab_size)
+        if hasattr(model, "forward") and "return_spikes" in model.forward.__code__.co_varnames:
+            logits, _, spk2 = model(x, num_steps, return_spikes=True)
+            last_spk2_ratio = (spk2 > 0).float().mean().item()
+        else:
+            logits = model(x, num_steps)
+
         loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
             y.reshape(-1),
@@ -102,9 +108,10 @@ def train_epoch_lm(
             curr_bpb = curr_loss / (ln2 * chars_per_token)
             curr_lr = optimizer.param_groups[0]["lr"]
 
+            spk_str = f" | spk2={last_spk2_ratio:.3f}" if last_spk2_ratio is not None else ""
             logger.info(
                 f"Step {step_count}/{total_steps} | "
-                f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | bpb={curr_bpb:.3f} | lr={curr_lr:.6f} | "
+                f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | bpb={curr_bpb:.3f} | lr={curr_lr:.6f}{spk_str} | "
                 f"{steps_per_sec:.1f}step/s"
             )
             t_last_log = now

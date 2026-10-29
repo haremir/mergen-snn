@@ -19,18 +19,17 @@ model:
   hidden_size: 384
   beta: 0.9
   num_steps: 32
-  tie_weights: true
+  tie_weights: false
 
 training:
-  epochs: 8
-  learning_rate: 0.0005
-  optimizer: sgd
-  foreach: false
-  momentum: 0.9
+  epochs: 5
+  learning_rate: 0.0003
+  optimizer: adam
+  warmup_steps: 200
   clip_grad_norm: 1.0
-  warmup_steps: 1000
   max_steps_per_epoch: null
   log_every: 500
+  early_stop_patience: 3000
   checkpoint_dir: checkpoints
   chars_per_token: 3.29
   resume: false
