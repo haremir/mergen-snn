@@ -252,22 +252,24 @@ class FastLinear(nn.Module):
 
 
 class BpeSNNLM(nn.Module):
-    """BPE tabanlı Spiking Sinir Ağı Dil Modeli (Mergen-Pico).
+    """BPE tabanlı Spiking Sinir Ağı Dil Modeli (Mergen-Pico, ~3.44M Parametre).
 
     Her timestep bir BPE alt-kelimesi (token) işler.
     LIF membran potansiyelleri zaman boyunca taşınarak bağlam korunur.
     Embedding çıkışı FC1 ve FC2 katmanları ile LIF nöronları üzerinden iletilir.
-    Cython Sequence LIF ve isteğe bağlı Cython FastLinear ile çalışabilir.
+    Weight tying (bağlı ağırlıklar): fc_out ağırlığı embedding ağırlığı ile paylaşılır.
+    Cython Sequence LIF ile hızlandırılmıştır.
     """
 
     def __init__(
         self,
         vocab_size: int = 8192,
-        embed_dim: int = 512,
-        hidden_size: int = 1024,
+        embed_dim: int = 384,
+        hidden_size: int = 384,
         beta: float = 0.9,
         use_cython: bool = True,
         use_fast_linear: bool = False,
+        tie_weights: bool = True,
     ):
         super().__init__()
         self.vocab_size = vocab_size
@@ -276,6 +278,7 @@ class BpeSNNLM(nn.Module):
         self.beta = beta
         self.use_cython = use_cython and (fast_lif_sequence_forward is not None)
         self.use_fast_linear = False  # PyTorch nn.Linear (MKL/BLAS) Cython'dan 4.59x daha hızlı
+        self.tie_weights = tie_weights and (embed_dim == hidden_size)
 
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.fc1 = nn.Linear(embed_dim, hidden_size)
@@ -288,7 +291,12 @@ class BpeSNNLM(nn.Module):
             self.lif2 = snn.Leaky(beta=beta)
 
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc_out = nn.Linear(hidden_size, vocab_size)
+
+        if self.tie_weights:
+            self.fc_out = nn.Linear(hidden_size, vocab_size, bias=False)
+            self.fc_out.weight = self.embedding.weight
+        else:
+            self.fc_out = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, input_ids: torch.Tensor, num_steps: int = 64) -> torch.Tensor:
         emb = self.embedding(input_ids)  # (batch, num_steps, embed_dim)

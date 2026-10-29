@@ -232,11 +232,13 @@ def main():
         from tokenizers import Tokenizer
         tokenizer_path = data_dir / "tokenizer_bpe.json"
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        tie_weights = checkpoint.get("tie_weights", embed_dim == hidden_size)
         model = BpeSNNLM(
             vocab_size=vocab_size,
             embed_dim=embed_dim,
             hidden_size=hidden_size,
             beta=beta,
+            tie_weights=tie_weights,
         ).to(device)
     else:
         charset_path = data_dir / "charset.json"
@@ -254,7 +256,7 @@ def main():
     prompts = [
         "Python'da liste",
         "def train(",
-        "The algorithm ",
+        "The algorithm",
     ]
 
     print("\n" + "=" * 70)

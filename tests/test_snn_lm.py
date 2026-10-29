@@ -38,3 +38,26 @@ def test_bpe_snn_lm_forward_backward():
     loss.backward()
     assert model.fc_out.weight.grad is not None
     assert not torch.isnan(model.fc_out.weight.grad).any()
+
+
+def test_bpe_snn_lm_weight_tying():
+    # embed_dim == hidden_size olduğunda weight tying aktif olmalı
+    model = BpeSNNLM(vocab_size=256, embed_dim=64, hidden_size=64, tie_weights=True)
+    assert model.tie_weights is True
+    assert model.fc_out.weight is model.embedding.weight
+    assert model.fc_out.bias is None
+
+    # Parametre sayısı: embedding (256*64) + fc1 (64*64+64) + fc2 (64*64+64) = 16384 + 4160 + 4160 = 24704
+    unique_params = sum(p.numel() for p in model.parameters())
+    assert unique_params == 256 * 64 + (64 * 64 + 64) + (64 * 64 + 64)
+
+    x = torch.randint(0, 256, (2, 8))
+    y = torch.randint(0, 256, (2, 8))
+    logits = model(x, num_steps=8)
+    assert logits.shape == (2, 8, 256)
+
+    loss = F.cross_entropy(logits.reshape(-1, 256), y.reshape(-1))
+    loss.backward()
+    assert model.embedding.weight.grad is not None
+    assert model.fc_out.weight.grad is not None
+    assert model.embedding.weight.grad is model.fc_out.weight.grad

@@ -152,12 +152,14 @@ def main():
     )
 
     # Model oluştur
+    tie_weights = bool(cfg.get("model", {}).get("tie_weights", True if embed_dim == hidden_size else False))
     if is_bpe:
         model = BpeSNNLM(
             vocab_size=vocab_size,
             embed_dim=embed_dim,
             hidden_size=hidden_size,
             beta=beta,
+            tie_weights=tie_weights,
         ).to(device)
     else:
         model = CharSNNLM(
@@ -170,10 +172,15 @@ def main():
     # Parametre dökümü
     print("\n--- Model Katmanları ve Parametre Sayıları ---")
     total_params = 0
-    for name, p in model.named_parameters():
+    seen_params = set()
+    for name, p in model.named_parameters(remove_duplicate=False):
         count = p.numel()
-        total_params += count
-        print(f"  {name:<25}: {count:>12,}  (şekil: {list(p.shape)})")
+        if p not in seen_params:
+            total_params += count
+            seen_params.add(p)
+            print(f"  {name:<25}: {count:>12,}  (şekil: {list(p.shape)})")
+        else:
+            print(f"  {name:<25}: {count:>12,}  (şekil: {list(p.shape)}) [Tied / Paylaşımlı]")
     print(f"Toplam Parametre Sayısı: {total_params:,}\n")
 
     logger.info(f"Cihaz: {dev_name} ({device})")
@@ -279,6 +286,7 @@ def main():
                 "hidden_size": hidden_size,
                 "beta": beta,
                 "is_bpe": is_bpe,
+                "tie_weights": getattr(model, "tie_weights", False),
             },
             ckpt_path,
         )
@@ -298,6 +306,7 @@ def main():
                     "hidden_size": hidden_size,
                     "beta": beta,
                     "is_bpe": is_bpe,
+                    "tie_weights": getattr(model, "tie_weights", False),
                 },
                 best_ckpt_path,
             )
