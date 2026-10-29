@@ -298,7 +298,9 @@ class BpeSNNLM(nn.Module):
         else:
             self.fc_out = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, input_ids: torch.Tensor, num_steps: int = 64) -> torch.Tensor:
+    def forward(
+        self, input_ids: torch.Tensor, num_steps: int = 64, return_spikes: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.embedding(input_ids)  # (batch, num_steps, embed_dim)
         cur1_all = self.fc1(emb)         # (batch, num_steps, hidden)
 
@@ -330,4 +332,6 @@ class BpeSNNLM(nn.Module):
             spk2_all = torch.stack(spk2_list, dim=1)
 
         logits_all = self.fc_out(spk2_all)  # (batch, num_steps, vocab)
+        if return_spikes:
+            return logits_all, spk1_all, spk2_all
         return logits_all
