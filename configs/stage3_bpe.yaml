@@ -29,10 +29,11 @@ training:
   clip_grad_norm: 1.0
   max_steps_per_epoch: null
   log_every: 500
+  checkpoint_every: 500
   early_stop_patience: 3000
   checkpoint_dir: checkpoints
   chars_per_token: 3.29
-  resume: false
+  resume: auto
 
 generation:
   max_new_tokens: 60

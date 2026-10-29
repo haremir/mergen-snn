@@ -1,6 +1,7 @@
 """Mergen-SNN — SNN Dil Modeli Eğitim, Değerlendirme ve Planlayıcı Fonksiyonları (Stage 2 & 3)."""
 
 import math
+from pathlib import Path
 import time
 from typing import Optional, Tuple
 
@@ -43,10 +44,18 @@ def train_epoch_lm(
     clip_grad_norm: Optional[float] = 1.0,
     scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
     chars_per_token: float = 3.29,
-) -> Tuple[float, float, float, float, bool]:
+    checkpoint_every: Optional[int] = None,
+    checkpoint_dir: Optional[Path] = None,
+    checkpoint_prefix: str = "bpe_lm",
+    epoch_idx: int = 0,
+    global_step_offset: int = 0,
+    best_val_loss: float = float("inf"),
+    start_step_in_epoch: int = 0,
+    is_bpe: bool = True,
+) -> Tuple[float, float, float, float, bool, int]:
     """SNN Dil Modeli için 1 epoch eğitim adımı.
 
-    Dönen: (avg_loss, avg_bpb, elapsed_sec, avg_step_sec, early_stopped)
+    Dönen: (avg_loss, avg_bpb, elapsed_sec, avg_step_sec, early_stopped, steps_completed)
     """
     model.train()
     total_loss = 0.0
@@ -63,7 +72,10 @@ def train_epoch_lm(
     ln2 = math.log(2)
     last_spk2_ratio = None
 
-    for x, y in loader:
+    for i, (x, y) in enumerate(loader):
+        if i < start_step_in_epoch:
+            continue
+
         x = x.to(device)
         y = y.to(device)  # x: (batch, num_steps), y: (batch, num_steps)
 
@@ -95,22 +107,60 @@ def train_epoch_lm(
         total_loss += batch_loss * tokens_in_batch
         total_tokens += tokens_in_batch
         step_count += 1
+        current_step_in_epoch = start_step_in_epoch + step_count
+        global_step = global_step_offset + step_count
 
-        if log_every and (step_count % log_every == 0 or step_count == total_steps):
+        # Step-level Checkpointing (Adım 2: Her checkpoint_every adımda kaydet, son 3'ü tut)
+        if checkpoint_every and checkpoint_dir and (global_step % checkpoint_every == 0):
+            ckpt_path = Path(checkpoint_dir) / f"{checkpoint_prefix}_step{global_step}.pt"
+            torch.save(
+                {
+                    "step": global_step,
+                    "epoch": epoch_idx + 1,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+                    "best_val_loss": best_val_loss,
+                    "rng_state": torch.get_rng_state(),
+                    "train_loss": total_loss / max(total_tokens, 1),
+                    "vocab_size": getattr(model, "vocab_size", None),
+                    "embed_dim": getattr(model, "embed_dim", None),
+                    "hidden_size": getattr(model, "hidden_size", None),
+                    "tie_weights": getattr(model, "tie_weights", False),
+                    "beta": getattr(model, "beta", 0.9),
+                    "is_bpe": is_bpe,
+                },
+                ckpt_path,
+            )
+            # Sadece son 3 step checkpoint'ini tut, eskileri sil
+            step_files = sorted(
+                Path(checkpoint_dir).glob(f"{checkpoint_prefix}_step*.pt"),
+                key=lambda f: int(f.stem.replace(f"{checkpoint_prefix}_step", ""))
+                if f.stem.replace(f"{checkpoint_prefix}_step", "").isdigit()
+                else 0,
+            )
+            if len(step_files) > 3:
+                for old_f in step_files[:-3]:
+                    try:
+                        old_f.unlink()
+                    except OSError:
+                        pass
+
+        if log_every and (current_step_in_epoch % log_every == 0 or current_step_in_epoch == total_steps):
             now = time.time()
             elapsed_interval = now - t_last_log
-            steps_in_interval = log_every if step_count % log_every == 0 else (step_count % log_every)
+            steps_in_interval = log_every if current_step_in_epoch % log_every == 0 else (current_step_in_epoch % log_every)
             step_duration = elapsed_interval / max(steps_in_interval, 1)
             steps_per_sec = 1.0 / max(step_duration, 1e-4)
 
-            curr_loss = total_loss / total_tokens
+            curr_loss = total_loss / max(total_tokens, 1)
             curr_ppl = math.exp(min(curr_loss, 20.0))
             curr_bpb = curr_loss / (ln2 * chars_per_token)
             curr_lr = optimizer.param_groups[0]["lr"]
 
             spk_str = f" | spk2={last_spk2_ratio:.3f}" if last_spk2_ratio is not None else ""
             logger.info(
-                f"Step {step_count}/{total_steps} | "
+                f"Step {current_step_in_epoch}/{total_steps} (Total {global_step}) | "
                 f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | bpb={curr_bpb:.3f} | lr={curr_lr:.6f}{spk_str} | "
                 f"{steps_per_sec:.1f}step/s"
             )
@@ -130,14 +180,14 @@ def train_epoch_lm(
                     early_stopped = True
                     break
 
-        if max_steps and step_count >= max_steps:
+        if max_steps and current_step_in_epoch >= max_steps:
             break
 
     elapsed = time.time() - t_start
     avg_step_sec = elapsed / max(step_count, 1)
     avg_loss = total_loss / max(total_tokens, 1)
     avg_bpb = avg_loss / (ln2 * chars_per_token)
-    return avg_loss, avg_bpb, elapsed, avg_step_sec, early_stopped
+    return avg_loss, avg_bpb, elapsed, avg_step_sec, early_stopped, step_count
 
 
 def eval_epoch_lm(

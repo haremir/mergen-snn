@@ -71,6 +71,13 @@ def main():
     parser = argparse.ArgumentParser(description="Mergen-SNN Dil Modeli Eğitimi")
     parser.add_argument("--config", type=str, default=None, help="YAML yapılandırma dosyası yolu")
     parser.add_argument("--max_steps", type=int, default=None, help="Epoch başına maksimum adım (override)")
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const="auto",
+        default=None,
+        help="Checkpoint'ten devam et ('auto' veya özel dosya yolu)",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -117,7 +124,9 @@ def main():
     if max_steps_per_epoch is not None:
         max_steps_per_epoch = int(max_steps_per_epoch)
     log_every = int(cfg.get("training", {}).get("log_every", 100))
-    resume_enabled = bool(cfg.get("training", {}).get("resume", False))
+    checkpoint_every = int(cfg.get("training", {}).get("checkpoint_every", 500))
+    resume_cfg = cfg.get("training", {}).get("resume", False)
+    resume_flag = args.resume if args.resume is not None else resume_cfg
 
     # Tokenizer ve Vocab Boyutu
     if is_bpe:
@@ -217,30 +226,93 @@ def main():
     logger.info(f"LR Planlayıcı: Warmup={warmup_steps} adım, Toplam Adım={total_training_steps}")
 
     # Resume kontrolü
+    start_epoch = 0
+    start_step_in_epoch = 0
+    global_step = 0
     best_val_loss = float("inf")
     best_ckpt_path = checkpoints_dir / f"{prefix}_best.pt"
 
-    if resume_enabled and best_ckpt_path.exists():
-        logger.info(f"Checkpoint yükleniyor: {best_ckpt_path}")
-        try:
-            ckpt_data = torch.load(best_ckpt_path, map_location=device, weights_only=False)
-            model.load_state_dict(ckpt_data["model_state_dict"])
-            if "optimizer_state_dict" in ckpt_data:
-                optimizer.load_state_dict(ckpt_data["optimizer_state_dict"])
-            best_val_loss = ckpt_data.get("val_loss", float("inf"))
-            logger.info(f"Checkpoint yüklendi (Önceki en iyi val_loss: {best_val_loss:.4f})")
-        except Exception as e:
-            logger.warning(f"Checkpoint yüklenemedi: {e}")
+    if resume_flag:
+        resume_target = None
+        # 1. Eğer doğrudan bir dosya yolu verilmişse
+        if isinstance(resume_flag, str) and resume_flag != "auto" and Path(resume_flag).exists():
+            resume_target = Path(resume_flag)
+        else:
+            # 2. Önce en yüksek step checkpoint'ini ara (checkpoints/{prefix}_step*.pt)
+            step_files = sorted(
+                checkpoints_dir.glob(f"{prefix}_step*.pt"),
+                key=lambda f: int(f.stem.replace(f"{prefix}_step", ""))
+                if f.stem.replace(f"{prefix}_step", "").isdigit()
+                else 0,
+            )
+            if step_files:
+                resume_target = step_files[-1]
+            else:
+                # 3. Epoch checkpoint'lerini ara (checkpoints/{prefix}_epoch*.pt)
+                epoch_files = sorted(
+                    checkpoints_dir.glob(f"{prefix}_epoch*.pt"),
+                    key=lambda f: int(f.stem.replace(f"{prefix}_epoch", ""))
+                    if f.stem.replace(f"{prefix}_epoch", "").isdigit()
+                    else 0,
+                )
+                if epoch_files:
+                    resume_target = epoch_files[-1]
+                elif (checkpoints_dir / f"{prefix}_best.pt").exists():
+                    resume_target = checkpoints_dir / f"{prefix}_best.pt"
+
+        if resume_target and resume_target.exists():
+            logger.info(f"Resume checkpoint yükleniyor: {resume_target}")
+            try:
+                ckpt_data = torch.load(resume_target, map_location=device, weights_only=False)
+                model.load_state_dict(ckpt_data["model_state_dict"])
+                if "optimizer_state_dict" in ckpt_data and ckpt_data["optimizer_state_dict"] is not None:
+                    optimizer.load_state_dict(ckpt_data["optimizer_state_dict"])
+
+                best_val_loss = ckpt_data.get("best_val_loss", ckpt_data.get("val_loss", float("inf")))
+                if "rng_state" in ckpt_data and ckpt_data["rng_state"] is not None:
+                    torch.set_rng_state(ckpt_data["rng_state"])
+
+                # Adım ve epoch hesaplama
+                if "step" in ckpt_data and ckpt_data["step"] is not None:
+                    global_step = int(ckpt_data["step"])
+                    start_epoch = global_step // steps_per_epoch
+                    start_step_in_epoch = global_step % steps_per_epoch
+                elif "epoch" in ckpt_data and ckpt_data["epoch"] is not None:
+                    completed_epoch = int(ckpt_data["epoch"])
+                    start_epoch = completed_epoch
+                    start_step_in_epoch = 0
+                    global_step = completed_epoch * steps_per_epoch
+
+                # Scheduler durumu
+                if "scheduler_state_dict" in ckpt_data and ckpt_data["scheduler_state_dict"] is not None:
+                    scheduler.load_state_dict(ckpt_data["scheduler_state_dict"])
+                else:
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        for _ in range(global_step):
+                            scheduler.step()
+
+                logger.info(
+                    f"Resume başarılı! Kaldığı yer: Epoch {start_epoch + 1}/{epochs}, "
+                    f"Epoch-İçi Adım {start_step_in_epoch}/{steps_per_epoch}, Toplam Adım {global_step}, "
+                    f"Önceki best_val_loss={best_val_loss:.4f}"
+                )
+            except Exception as e:
+                logger.warning(f"Resume checkpoint yüklenemedi: {e}")
+        else:
+            logger.info("Resume için uygun checkpoint bulunamadı, eğitim sıfırdan başlıyor.")
 
     train_losses = []
     val_losses = []
     total_training_start = time.time()
 
-    for epoch in range(epochs):
-        logger.info(f"--- Epoch {epoch + 1}/{epochs} Başladı ---")
+    for epoch in range(start_epoch, epochs):
+        current_start_step = start_step_in_epoch if epoch == start_epoch else 0
+        logger.info(f"--- Epoch {epoch + 1}/{epochs} Başladı (Başlangıç Adımı: {current_start_step}/{steps_per_epoch}) ---")
         t0 = time.time()
 
-        train_loss, train_bpb, train_elapsed, step_avg_sec, early_stopped = train_epoch_lm(
+        train_loss, train_bpb, train_elapsed, step_avg_sec, early_stopped, steps_done = train_epoch_lm(
             model=model,
             loader=train_loader,
             optimizer=optimizer,
@@ -252,7 +324,16 @@ def main():
             clip_grad_norm=clip_grad_norm,
             scheduler=scheduler,
             chars_per_token=chars_per_token,
+            checkpoint_every=checkpoint_every,
+            checkpoint_dir=checkpoints_dir,
+            checkpoint_prefix=prefix,
+            epoch_idx=epoch,
+            global_step_offset=global_step,
+            best_val_loss=best_val_loss,
+            start_step_in_epoch=current_start_step,
+            is_bpe=is_bpe,
         )
+        global_step += steps_done
 
         val_loss, val_bpb, val_elapsed = eval_epoch_lm(
             model=model,
@@ -282,42 +363,30 @@ def main():
 
         # Checkpoint kaydet
         ckpt_path = checkpoints_dir / f"{prefix}_epoch{epoch + 1}.pt"
-        torch.save(
-            {
-                "epoch": epoch + 1,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "vocab_size": vocab_size,
-                "embed_dim": embed_dim,
-                "hidden_size": hidden_size,
-                "beta": beta,
-                "is_bpe": is_bpe,
-                "tie_weights": getattr(model, "tie_weights", False),
-            },
-            ckpt_path,
-        )
+        ckpt_payload = {
+            "epoch": epoch + 1,
+            "step": global_step,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "best_val_loss": best_val_loss,
+            "rng_state": torch.get_rng_state(),
+            "vocab_size": vocab_size,
+            "embed_dim": embed_dim,
+            "hidden_size": hidden_size,
+            "beta": beta,
+            "is_bpe": is_bpe,
+            "tie_weights": getattr(model, "tie_weights", False),
+        }
+        torch.save(ckpt_payload, ckpt_path)
         logger.info(f"Checkpoint kaydedildi: {ckpt_path}")
 
         if is_best:
             best_val_loss = val_loss
-            torch.save(
-                {
-                    "epoch": epoch + 1,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "train_loss": train_loss,
-                    "val_loss": val_loss,
-                    "vocab_size": vocab_size,
-                    "embed_dim": embed_dim,
-                    "hidden_size": hidden_size,
-                    "beta": beta,
-                    "is_bpe": is_bpe,
-                    "tie_weights": getattr(model, "tie_weights", False),
-                },
-                best_ckpt_path,
-            )
+            ckpt_payload["best_val_loss"] = best_val_loss
+            torch.save(ckpt_payload, best_ckpt_path)
             logger.info(f"Yeni en iyi model kaydedildi: {best_ckpt_path} (val_loss={val_loss:.4f})")
 
         if early_stopped:

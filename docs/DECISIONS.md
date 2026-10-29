@@ -15,6 +15,7 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
 | **05** | **Klasik Transformer Yerine SNN Tercihi** | Donanım kısıtları (AMD RX 580 + CPU) ve enerji/hesaplama verimliliği nedeniyle **SNN mimarisinin seçilmesi** | 2026-10-28 | ✅ Kabul Edildi |
 | **06** | **Model Ölçekleme: Mergen-Tiny (10M)** | 275K PoC modelindeki plato sonrası dil öğrenimi için minimum **~10M parametre ölçeğinin hedeflenmesi** | 2026-10-28 | ✅ Kabul Edildi |
 | **07** | **Tokenizasyon Dönüşümü: Byte-Level BPE** | Char-level (460 vocab) yerine kod ve CS metinlerini temsil edecek **Byte-Level BPE Tokenizer'a geçilmesi (PDF B08)** | 2026-10-28 | ✅ Kabul Edildi |
+| **08** | **Eğitim Güvenilirliği & Kesintisiz Çalışma** | Uzun süreli model eğitimlerinde **Step-Level Checkpointing (500 adım)** ve donanımsal **UPS (Kesintisiz Güç Kaynağı)** şartı | 2026-10-29 | ✅ Kabul Edildi |
 
 ---
 
@@ -79,3 +80,16 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
   2. Kelime düzeyinde tokenizer (büyük sözlük boyutu ve OOV problemleri).
   3. Byte-Level BPE (Byte-Pair Encoding) Tokenizer (PDF B08 spesifikasyonu).
 - **Sonuç & Gerekçe:** Byte-Level BPE; Python/C++ kod sözdizimini, özel anahtar kelimeleri ve teknik İngilizce terimleri sıkıştırılmış alt-kelime dizileri halinde temsil eder. Bu geçiş, aynı bağlam uzunluğunda modele yaklaşık 4-5 kat daha geniş bir anlamsal görüş açısı kazandıracaktır.
+
+---
+
+### ADR 08: Uzun Eğitimler İçin Kesintisiz Güç Kaynağı (UPS) ve Step-Level Checkpoint Şartı
+- **Bağlam:** Aşama 3 ölçeğinde (6.6M parametre, 31K adım, ~3-4 saat) gece ve çoklu epoch koşularında elektrik kesintileri, sistem yeniden başlatmaları veya uyku modu geçişleri gibi dış etkenler eğitim ilerlemesini kaybetme riski taşır.
+- **Alternatifler:**
+  1. Yalnızca epoch sonunda checkpoint kaydetmek (1 epoch kesintisinde 35-45 dakikalık tüm ilerleme kaybolur).
+  2. Her adımda checkpoint kaydetmek (I/O darboğazı ve disk şişmesi).
+  3. Her 500 adımda bir dönerli (rolling, son 3 adet) step-level checkpoint kaydetmek.
+- **Sonuç & Gerekçe:**
+  1. Kod seviyesinde her 500 adımda bir `checkpoints/bpe_lm_step{step}.pt` checkpoint'i alınır; disk tasarrufu için daima son 3 checkpoint saklanır.
+  2. `train_lm.py` script'ine `--resume` argümanı ve `resume: auto` desteği eklenerek kesinti sonrası en son adımdan şeffaf biçimde devam edilmesi sağlanmıştır.
+  3. Donanım seviyesinde uzun süreli eğitim koşuları için **UPS (Kesintisiz Güç Kaynağı)** kullanımı şart olarak not düşülmüştür.
