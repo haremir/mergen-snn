@@ -31,7 +31,7 @@ training:
   checkpoint_every: 500
   resume: auto
   checkpoint_dir: checkpoints          # yerel varsayılan (Colab'de Drive symlink ile /content/drive/MyDrive/mergen-snn/checkpoints)
-  chars_per_token: 3.29
+  chars_per_token: 3.12
 
 generation:
   max_new_tokens: 60
