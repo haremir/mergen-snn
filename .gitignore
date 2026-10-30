@@ -49,5 +49,7 @@ data/processed/*
 !data/processed/charset.json
 !data/processed/tokenizer_bpe.json
 
+data/sft/*.bin
+
 # Ensure uv.lock is committed
 !uv.lock

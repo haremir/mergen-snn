@@ -1,0 +1,12 @@
+{
+  "num_samples": 500,
+  "max_seq_len": 256,
+  "input_bin": "sft_train.bin",
+  "mask_bin": "sft_mask.bin",
+  "total_tokens_raw": 53297,
+  "total_assistant_supervised_tokens": 19042,
+  "average_tokens_per_sample": 106.59,
+  "average_assistant_tokens_per_sample": 38.08,
+  "truncated_samples": 0,
+  "vocab_size": 8196
+}

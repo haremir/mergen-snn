@@ -298,6 +298,58 @@ class BpeSNNLM(nn.Module):
         else:
             self.fc_out = nn.Linear(hidden_size, vocab_size)
 
+    def resize_token_embeddings(self, new_vocab_size: int):
+        """Token dağarcığı boyutunu genişletir (ör. SFT özel tokenları için)."""
+        if new_vocab_size == self.vocab_size:
+            return self.embedding
+
+        old_vocab_size = self.vocab_size
+        old_emb = self.embedding
+        new_emb = nn.Embedding(new_vocab_size, self.embed_dim)
+
+        # Mevcut ağırlıkları kopyala
+        n_copy = min(old_vocab_size, new_vocab_size)
+        new_emb.weight.data[:n_copy] = old_emb.weight.data[:n_copy]
+
+        # Yeni tokenlar için başlatma
+        if new_vocab_size > old_vocab_size:
+            old_std = old_emb.weight.data.std().item()
+            new_emb.weight.data[n_copy:].normal_(mean=0.0, std=old_std)
+            # Eğer 4 özel token eklendiyse (<|system|>, <|user|>, <|assistant|>, <|end|>)
+            if new_vocab_size == 8196 and old_vocab_size == 8192:
+                new_emb.weight.data[8192] = old_emb.weight.data[3]   # <system>
+                new_emb.weight.data[8193] = old_emb.weight.data[4]   # <user>
+                new_emb.weight.data[8194] = old_emb.weight.data[5]   # <assistant>
+                new_emb.weight.data[8195] = old_emb.weight.data[2]   # <endoftext>
+
+        self.embedding = new_emb
+
+        # fc_out katmanını genişlet
+        old_fc = self.fc_out
+        has_bias = old_fc.bias is not None
+        new_fc = nn.Linear(self.hidden_size, new_vocab_size, bias=has_bias)
+        new_fc.weight.data[:n_copy] = old_fc.weight.data[:n_copy]
+        if new_vocab_size > old_vocab_size:
+            old_fc_std = old_fc.weight.data.std().item()
+            new_fc.weight.data[n_copy:].normal_(mean=0.0, std=old_fc_std)
+            if has_bias:
+                new_fc.bias.data[:n_copy] = old_fc.bias.data[:n_copy]
+                new_fc.bias.data[n_copy:].zero_()
+            if new_vocab_size == 8196 and old_vocab_size == 8192:
+                new_fc.weight.data[8192] = old_fc.weight.data[3]
+                new_fc.weight.data[8193] = old_fc.weight.data[4]
+                new_fc.weight.data[8194] = old_fc.weight.data[5]
+                new_fc.weight.data[8195] = old_fc.weight.data[2]
+                if has_bias:
+                    new_fc.bias.data[8192] = old_fc.bias.data[3]
+                    new_fc.bias.data[8193] = old_fc.bias.data[4]
+                    new_fc.bias.data[8194] = old_fc.bias.data[5]
+                    new_fc.bias.data[8195] = old_fc.bias.data[2]
+
+        self.fc_out = new_fc
+        self.vocab_size = new_vocab_size
+        return self.embedding
+
     def forward(
         self, input_ids: torch.Tensor, num_steps: int = 64, return_spikes: bool = False
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -335,3 +387,103 @@ class BpeSNNLM(nn.Module):
         if return_spikes:
             return logits_all, spk1_all, spk2_all
         return logits_all
+
+    @torch.no_grad()
+    def generate_with_metrics(
+        self,
+        tokens,
+        max_new_tokens: int = 100,
+        temperature: float = 0.8,
+        top_k: int = 40,
+        top_p: float = 0.9,
+        end_token_id: int = 8195,
+        block_size: int = 256,
+        pad_token_id: int = 1,
+    ) -> tuple[list[int], dict]:
+        """Metriklerle birlikte otoregresif metin üretimi yapar."""
+        self.eval()
+        device = next(self.parameters()).device
+
+        if hasattr(tokens, "ids"):
+            current_ids = list(tokens.ids)
+        elif isinstance(tokens, torch.Tensor):
+            current_ids = tokens.squeeze().tolist()
+            if isinstance(current_ids, int):
+                current_ids = [current_ids]
+        else:
+            current_ids = list(tokens)
+
+        generated_ids: list[int] = []
+        token_confidences: list[float] = []
+        token_losses: list[float] = []
+        spike_ratios: list[float] = []
+
+        temp = max(float(temperature), 1e-4)
+
+        for _ in range(max_new_tokens):
+            if len(current_ids) < block_size:
+                pad_len = block_size - len(current_ids)
+                window_ids = [pad_token_id] * pad_len + current_ids
+            else:
+                window_ids = current_ids[-block_size:]
+
+            inp = torch.tensor([window_ids], dtype=torch.long, device=device)
+            logits_all, _, spk2_all = self.forward(inp, num_steps=block_size, return_spikes=True)
+
+            last_logits = logits_all[0, -1, :]  # (vocab_size,)
+
+            # Firing rate
+            step_spk2 = (spk2_all[0, -1, :] > 0).float().mean().item()
+            spike_ratios.append(step_spk2)
+
+            # Top-k & Top-p filtreleme
+            filtered_logits = last_logits / temp
+            if top_k > 0:
+                k = min(top_k, filtered_logits.size(-1))
+                v, _ = torch.topk(filtered_logits, k)
+                filtered_logits[filtered_logits < v[-1]] = -float("Inf")
+
+            if top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(filtered_logits, descending=True)
+                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                sorted_indices_to_remove = cumulative_probs > top_p
+                sorted_indices_to_remove[1:] = sorted_indices_to_remove[:-1].clone()
+                sorted_indices_to_remove[0] = False
+                indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                filtered_logits[indices_to_remove] = -float("Inf")
+
+            raw_probs = torch.softmax(last_logits, dim=-1)
+            sample_probs = torch.softmax(filtered_logits, dim=-1)
+            if torch.isnan(sample_probs).any() or sample_probs.sum() == 0:
+                sample_probs = torch.ones_like(sample_probs) / sample_probs.size(-1)
+
+            next_token = torch.multinomial(sample_probs, num_samples=1).item()
+
+            conf = raw_probs[next_token].item()
+            loss_val = -math.log(max(conf, 1e-7))
+            token_confidences.append(conf)
+            token_losses.append(loss_val)
+
+            if next_token == end_token_id:
+                break
+
+            generated_ids.append(next_token)
+            current_ids.append(next_token)
+
+        n_tokens = len(generated_ids)
+        mean_loss = float(sum(token_losses) / max(len(token_losses), 1))
+        mean_conf = float(sum(token_confidences) / max(len(token_confidences), 1))
+        mean_spike = float(sum(spike_ratios) / max(len(spike_ratios), 1))
+        ppl = float(math.exp(min(mean_loss, 20.0)))
+        bpb = float(mean_loss / math.log(2.0))
+
+        metrics = {
+            "loss": mean_loss,
+            "ppl": ppl,
+            "bpb": bpb,
+            "spike_ratio": mean_spike,
+            "confidence": mean_conf,
+            "n_tokens": n_tokens,
+        }
+
+        return generated_ids, metrics

@@ -25,6 +25,7 @@ dependencies = [
     "tokenizers",
     "cython",
     "setuptools",
+    "gradio>=6.31.0",
 ]
 
 [project.optional-dependencies]
