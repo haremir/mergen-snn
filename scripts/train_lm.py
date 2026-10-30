@@ -83,11 +83,19 @@ def main():
     cfg = load_config(args.config)
 
     is_bpe = (
-        cfg.get("model", {}).get("name") == "bpe_snn_lm"
+        cfg.get("model", {}).get("name") in ("bpe_snn_lm", "small_snn_lm")
         or cfg.get("data", {}).get("name") == "bpe_lm"
     )
-    prefix = "bpe_lm" if is_bpe else "lm"
-    stage_title = "Aşama 3: 10M BPE SNN (Mergen-Pico)" if is_bpe else "Aşama 2: Char-SNN"
+    model_name = cfg.get("model", {}).get("name", "")
+    if model_name == "small_snn_lm":
+        prefix = "small_lm"
+        stage_title = "Aşama 4: Small SNN (~9M Parametre)"
+    elif is_bpe:
+        prefix = "bpe_lm"
+        stage_title = "Aşama 3: 10M BPE SNN (Mergen-Pico)"
+    else:
+        prefix = "lm"
+        stage_title = "Aşama 2: Char-SNN"
 
     logger.info("==========================================")
     logger.info(f"Mergen-SNN — {stage_title} Eğitimi")
@@ -171,6 +179,7 @@ def main():
             hidden_size=hidden_size,
             beta=beta,
             tie_weights=tie_weights,
+            use_cython=(getattr(device, "type", "") == "cpu"),
         ).to(device)
     else:
         model = CharSNNLM(
@@ -263,41 +272,50 @@ def main():
         if resume_target and resume_target.exists():
             logger.info(f"Resume checkpoint yükleniyor: {resume_target}")
             try:
-                ckpt_data = torch.load(resume_target, map_location=device, weights_only=False)
-                model.load_state_dict(ckpt_data["model_state_dict"])
-                if "optimizer_state_dict" in ckpt_data and ckpt_data["optimizer_state_dict"] is not None:
-                    optimizer.load_state_dict(ckpt_data["optimizer_state_dict"])
-
-                best_val_loss = ckpt_data.get("best_val_loss", ckpt_data.get("val_loss", float("inf")))
-                if "rng_state" in ckpt_data and ckpt_data["rng_state"] is not None:
-                    torch.set_rng_state(ckpt_data["rng_state"])
-
-                # Adım ve epoch hesaplama
-                if "step" in ckpt_data and ckpt_data["step"] is not None:
-                    global_step = int(ckpt_data["step"])
-                    start_epoch = global_step // steps_per_epoch
-                    start_step_in_epoch = global_step % steps_per_epoch
-                elif "epoch" in ckpt_data and ckpt_data["epoch"] is not None:
-                    completed_epoch = int(ckpt_data["epoch"])
-                    start_epoch = completed_epoch
-                    start_step_in_epoch = 0
-                    global_step = completed_epoch * steps_per_epoch
-
-                # Scheduler durumu
-                if "scheduler_state_dict" in ckpt_data and ckpt_data["scheduler_state_dict"] is not None:
-                    scheduler.load_state_dict(ckpt_data["scheduler_state_dict"])
+                map_loc = "cpu" if getattr(device, "type", "") == "privateuseone" else device
+                ckpt_data = torch.load(resume_target, map_location=map_loc, weights_only=False)
+                ckpt_embed = ckpt_data.get("embed_dim", embed_dim)
+                ckpt_hidden = ckpt_data.get("hidden_size", hidden_size)
+                if ckpt_embed != embed_dim or ckpt_hidden != hidden_size:
+                    logger.warning(
+                        f"Checkpoint model boyutları uyuşmuyor ({ckpt_embed}x{ckpt_hidden} vs {embed_dim}x{hidden_size}). Sıfırdan başlanıyor."
+                    )
                 else:
-                    import warnings
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        for _ in range(global_step):
-                            scheduler.step()
+                    model.load_state_dict(ckpt_data["model_state_dict"], strict=False)
+                    if "optimizer_state_dict" in ckpt_data and ckpt_data["optimizer_state_dict"] is not None:
+                        optimizer.load_state_dict(ckpt_data["optimizer_state_dict"])
 
-                logger.info(
-                    f"Resume başarılı! Kaldığı yer: Epoch {start_epoch + 1}/{epochs}, "
-                    f"Epoch-İçi Adım {start_step_in_epoch}/{steps_per_epoch}, Toplam Adım {global_step}, "
-                    f"Önceki best_val_loss={best_val_loss:.4f}"
-                )
+                    best_val_loss = ckpt_data.get("best_val_loss", ckpt_data.get("val_loss", float("inf")))
+                    if "rng_state" in ckpt_data and ckpt_data["rng_state"] is not None:
+                        rng_s = ckpt_data["rng_state"]
+                        torch.set_rng_state(rng_s.cpu() if hasattr(rng_s, "cpu") else rng_s)
+
+                    # Adım ve epoch hesaplama
+                    if "step" in ckpt_data and ckpt_data["step"] is not None:
+                        global_step = int(ckpt_data["step"])
+                        start_epoch = global_step // steps_per_epoch
+                        start_step_in_epoch = global_step % steps_per_epoch
+                    elif "epoch" in ckpt_data and ckpt_data["epoch"] is not None:
+                        completed_epoch = int(ckpt_data["epoch"])
+                        start_epoch = completed_epoch
+                        start_step_in_epoch = 0
+                        global_step = completed_epoch * steps_per_epoch
+
+                    # Scheduler durumu
+                    if "scheduler_state_dict" in ckpt_data and ckpt_data["scheduler_state_dict"] is not None:
+                        scheduler.load_state_dict(ckpt_data["scheduler_state_dict"])
+                    else:
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            for _ in range(global_step):
+                                scheduler.step()
+
+                    logger.info(
+                        f"Resume başarılı! Kaldığı yer: Epoch {start_epoch + 1}/{epochs}, "
+                        f"Epoch-İçi Adım {start_step_in_epoch}/{steps_per_epoch}, Toplam Adım {global_step}, "
+                        f"Önceki best_val_loss={best_val_loss:.4f}"
+                    )
             except Exception as e:
                 logger.warning(f"Resume checkpoint yüklenemedi: {e}")
         else:
