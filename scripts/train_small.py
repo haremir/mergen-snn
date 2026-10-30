@@ -211,6 +211,7 @@ def main():
         hidden_size=hidden_size,
         beta=beta,
         tie_weights=tie_weights,
+        use_cython=(device.type == "cpu"),
     ).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())

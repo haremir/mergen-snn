@@ -2,7 +2,7 @@ defaults:
   - default
 
 device:
-  prefer: cpu
+  prefer: auto
 
 data:
   name: bpe_lm

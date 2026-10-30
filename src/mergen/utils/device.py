@@ -2,8 +2,12 @@ import torch
 
 
 def get_device(prefer: str = "auto"):
-    """prefer: 'auto' | 'cpu' | 'directml'"""
+    """prefer: 'auto' | 'cpu' | 'directml' | 'cuda'"""
     if prefer == "cpu":
+        return torch.device("cpu")
+    if prefer == "cuda":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
         return torch.device("cpu")
     if prefer == "directml":
         try:
@@ -14,9 +18,10 @@ def get_device(prefer: str = "auto"):
             raise RuntimeError("DirectML cihazı bulunamadı.")
         return torch_directml.device()
     # auto
+    if torch.cuda.is_available():
+        return torch.device("cuda")
     try:
         import torch_directml
-
         if torch_directml.device_count() > 0:
             return torch_directml.device()
     except ImportError:
