@@ -214,9 +214,10 @@ def main():
         return
 
     logger.info(f"Checkpoint yükleniyor: {ckpt_path.name} (Cihaz: {dev_name})")
-    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+    map_loc = "cpu" if getattr(device, "type", "") == "privateuseone" else device
+    checkpoint = torch.load(ckpt_path, map_location=map_loc, weights_only=False)
 
-    is_bpe = checkpoint.get("is_bpe", False) or "bpe" in ckpt_path.name.lower()
+    is_bpe = checkpoint.get("is_bpe", False) or "bpe" in ckpt_path.name.lower() or "small_lm" in ckpt_path.name.lower()
     vocab_size = checkpoint.get("vocab_size", 8192 if is_bpe else 460)
     embed_dim = checkpoint.get("embed_dim", 512 if is_bpe else 128)
     hidden_size = checkpoint.get("hidden_size", 1024 if is_bpe else 256)
@@ -239,6 +240,7 @@ def main():
             hidden_size=hidden_size,
             beta=beta,
             tie_weights=tie_weights,
+            use_cython=(getattr(device, "type", "") == "cpu"),
         ).to(device)
     else:
         charset_path = data_dir / "charset.json"
@@ -250,7 +252,7 @@ def main():
             beta=beta,
         ).to(device)
 
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     model.eval()
 
     prompts = [
