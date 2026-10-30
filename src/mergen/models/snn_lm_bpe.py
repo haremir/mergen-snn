@@ -351,8 +351,10 @@ class BpeSNNLM(nn.Module):
         return self.embedding
 
     def forward(
-        self, input_ids: torch.Tensor, num_steps: int = 64, return_spikes: bool = False
+        self, input_ids: torch.Tensor, num_steps: int | None = None, return_spikes: bool = False
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if num_steps is None or num_steps > input_ids.shape[1]:
+            num_steps = input_ids.shape[1]
         emb = self.embedding(input_ids)  # (batch, num_steps, embed_dim)
         cur1_all = self.fc1(emb)         # (batch, num_steps, hidden)
 
