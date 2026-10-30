@@ -1,0 +1,40 @@
+defaults:
+  - default
+
+device:
+  prefer: cpu
+
+data:
+  name: bpe_lm
+  block_size: 32
+  batch_size: 128
+  train_bin: data/processed/bpe_train.bin
+  val_bin: data/processed/bpe_val.bin
+  tokenizer_path: data/processed/tokenizer_bpe.json
+
+model:
+  name: small_snn_lm
+  vocab_size: 8192
+  embed_dim: 512
+  hidden_size: 512
+  num_steps: 32
+  tie_weights: false
+
+training:
+  epochs: 3
+  learning_rate: 0.0002
+  optimizer: adam
+  warmup_steps: 500
+  clip_grad_norm: 1.0
+  max_steps_per_epoch: null
+  log_every: 500
+  checkpoint_every: 500
+  resume: auto
+  checkpoint_dir: checkpoints          # yerel varsayılan (Colab'de Drive symlink ile /content/drive/MyDrive/mergen-snn/checkpoints)
+  chars_per_token: 3.29
+
+generation:
+  max_new_tokens: 60
+  temperature: 0.8
+  top_k: 40
+  top_p: 0.9

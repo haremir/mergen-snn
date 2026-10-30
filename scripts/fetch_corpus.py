@@ -45,6 +45,8 @@ LICENSE_NOTES = {
     "cython_docs": "Apache-2.0 (Cython project).",
     "gc_papers": "Curated academic papers on automatic memory management and garbage collection (PWL / open access).",
     "architecture_local": "Copyrighted textbooks (Patterson & Hennessy). Local copy provided by user for personal research.",
+    "tr_docs": "Turkish Computer Science articles from Wikipedia (CC-BY-SA 3.0/4.0), open-access university theses from ITU Polen / DSpace, and Turkish CS lecture notes.",
+    "code_docs": "Permissively licensed Python and C source code, algorithms, and data structures (MIT/Apache/BSD) from TheAlgorithms and public code datasets.",
 }
 
 # Doğrudan İndirilecek Büyük Dosyalar (PDF / TXT)
@@ -1157,6 +1159,330 @@ def check_local_required():
                 print("       Talimat: Bu telifli kitaplar otomatik indirilemez. PDF'lerini data/raw/cs_corpus/architecture_local/ altına elle koy, sonra bu script'i tekrar çalıştır.")
 
 
+def process_turkish_corpus(session: requests.Session, pdf_stats: Dict, low_quality_list: List[Dict]):
+    """Türkçe CS Wikipedia sayfalarını, açık erişimli tezleri ve ders notlarını toplar."""
+    logger.info(">>> Türkçe CS Veri Seti (tr_docs) Toplanıyor...")
+    tr_dir = BASE_DIR / "tr_docs"
+    tr_dir.mkdir(parents=True, exist_ok=True)
+    write_license_note(tr_dir, "tr_docs")
+
+    # 1. Türkçe Wikipedia CS Sayfaları
+    wiki_keywords = [
+        "bilgisayar bilimi", "algoritma", "veri yapısı", "programlama dili", "işletim sistemi",
+        "bilgisayar mimarisi", "bilgisayar ağları", "veritabanı yönetim sistemi", "yapay zeka",
+        "makine öğrenimi", "derleyici", "nesne yönelimli programlama", "ayrık matematik",
+        "yığın veri yapısı", "kuyruk veri yapısı", "bağlı liste", "ikili arama ağacı",
+        "sıralama algoritması", "kriptografi", "bellek yönetimi", "süreç bilişim", "iş parçacığı",
+        "dağıtık sistemler", "yazılım mühendisliği", "graf teorisi", "özyineleme", "arama algoritması",
+        "turing makinesi", "biçimsel diller", "bilişim", "mikroişlemci", "önbellek", "sanal bellek",
+        "dinamik programlama", "açgözlü algoritma", "dijkstra algoritması", "hızlı sıralama"
+    ]
+    wiki_url = "https://tr.wikipedia.org/w/api.php"
+    wiki_headers = {"User-Agent": "MergenSNNCorpus/1.0 (https://github.com/haremir/mergen-snn; contact: info@mergen.ai)"}
+    titles: Set[str] = set()
+
+    for kw in wiki_keywords:
+        try:
+            params = {"action": "query", "list": "search", "srsearch": kw, "format": "json", "srlimit": 15}
+            r = requests.get(wiki_url, params=params, headers=wiki_headers, timeout=10).json()
+            for item in r.get("query", {}).get("search", []):
+                t = item.get("title")
+                if t and not any(t.startswith(p) for p in ["Kategori:", "Dosya:", "Şablon:", "Tartışma:"]):
+                    titles.add(t)
+        except Exception as e:
+            logger.warning(f"Wikipedia arama hatası ({kw}): {e}")
+
+    logger.info(f"Türkçe Wikipedia'dan {len(titles)} benzersiz CS başlığı bulundu.")
+    wiki_saved = 0
+    for title in sorted(titles):
+        safe_name = re.sub(r'[\/:*?"<>|\s]+', '_', title).strip('_')
+        out_file = tr_dir / f"wiki_{safe_name}.txt"
+        if out_file.exists() and out_file.stat().st_size > 200:
+            wiki_saved += 1
+            continue
+
+        try:
+            time.sleep(0.05)
+            params = {"action": "query", "prop": "extracts", "explaintext": 1, "titles": title, "format": "json"}
+            res = requests.get(wiki_url, params=params, headers=wiki_headers, timeout=10).json()
+            pages = res.get("query", {}).get("pages", {})
+            for pid, pdata in pages.items():
+                content = pdata.get("extract", "")
+                if content and len(content.strip()) > 200:
+                    out_file.write_text(content.strip(), encoding="utf-8")
+                    wiki_saved += 1
+                    print(f"[OK] tr_docs/wiki_{safe_name}.txt ({format_size(len(content))})")
+        except Exception as e:
+            logger.warning(f"Wikipedia metin çekme hatası ({title}): {e}")
+
+    logger.info(f"Türkçe Wikipedia toplam makale: {wiki_saved}")
+
+    # 2. Açık Erişim İTÜ Polen / DSpace Tezleri ve Ders Notları
+    theses_dir = tr_dir / "theses"
+    theses_dir.mkdir(parents=True, exist_ok=True)
+    dspace_queries = [
+        "bilgisayar mühendisliği",
+        "algoritma veri yapıları",
+        "yapay zeka derin öğrenme",
+        "yazılım mühendisliği",
+    ]
+    theses_saved = 0
+    max_theses = 35
+
+    for query in dspace_queries:
+        if theses_saved >= max_theses:
+            break
+        try:
+            ds_url = f"https://polen.itu.edu.tr/server/api/discover/search/objects?query={requests.utils.quote(query)}&size=20"
+            r = session.get(ds_url, verify=False, timeout=15).json()
+            objects = r.get("_embedded", {}).get("searchResult", {}).get("_embedded", {}).get("objects", [])
+
+            for obj in objects:
+                if theses_saved >= max_theses:
+                    break
+                res = obj.get("_embedded", {}).get("indexableObject", {})
+                bundles_url = res.get("_links", {}).get("bundles", {}).get("href")
+                if not bundles_url:
+                    continue
+
+                r_b = session.get(bundles_url, verify=False, timeout=10).json()
+                for b in r_b.get("_embedded", {}).get("bundles", []):
+                    if b.get("name") == "ORIGINAL":
+                        r_bs = session.get(b["_links"]["bitstreams"]["href"], verify=False, timeout=10).json()
+                        for bs in r_bs.get("_embedded", {}).get("bitstreams", []):
+                            bs_name = bs.get("name", "")
+                            if bs_name.lower().endswith(".pdf"):
+                                item_id = bs.get("id", str(theses_saved))
+                                dest_pdf = theses_dir / f"thesis_{item_id[:8]}.pdf"
+                                dest_txt = dest_pdf.with_suffix(".txt")
+
+                                if dest_txt.exists() and dest_txt.stat().st_size > 1024:
+                                    theses_saved += 1
+                                    continue
+
+                                content_url = bs["_links"]["content"]["href"]
+                                ok, _ = smart_download(session, content_url, dest_pdf, timeout=60)
+                                if ok:
+                                    pdf_stats["total"] += 1
+                                    if extract_text_from_pdf(dest_pdf):
+                                        pdf_stats["success"] += 1
+                                        check_pdf_quality(dest_pdf, low_quality_list)
+                                        theses_saved += 1
+                                        print(f"[OK] tr_docs/theses/{dest_txt.name} ({format_size(dest_txt.stat().st_size)})")
+                                break
+        except Exception as e:
+            logger.warning(f"DSpace tez indirme hatası ({query}): {e}")
+
+    logger.info(f"Türkçe açık erişim tez/doküman sayısı: {theses_saved}")
+
+
+def process_code_corpus(session: requests.Session, target_count: int = 5000):
+    """Python ve C dillerinde 5.000 dosyalık lisanslı kod korpusu indirir ve .txt olarak kaydeder."""
+    logger.info(">>> Kod Ağırlıklı Veri Seti (code_docs) Toplanıyor...")
+    code_dir = BASE_DIR / "code_docs"
+    py_dir = code_dir / "python"
+    c_dir = code_dir / "c"
+    py_dir.mkdir(parents=True, exist_ok=True)
+    c_dir.mkdir(parents=True, exist_ok=True)
+    write_license_note(code_dir, "code_docs")
+
+    existing_py = list(py_dir.glob("*.txt"))
+    existing_c = list(c_dir.glob("*.txt"))
+    if len(existing_py) + len(existing_c) >= target_count:
+        logger.info(f"Kod korpusu önbellekte mevcut ({len(existing_py)} Python, {len(existing_c)} C). Atlanıyor.")
+        return
+
+    # 1. TheAlgorithms/Python Klonla
+    temp_py = tempfile.mkdtemp(prefix="algo_py_")
+    try:
+        logger.info("TheAlgorithms/Python klonlanıyor...")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "https://github.com/TheAlgorithms/Python.git", temp_py],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+        )
+        py_files = sorted(Path(temp_py).rglob("*.py"))
+        py_count = len(existing_py)
+        for pf in py_files:
+            if pf.name.startswith("__") or "test" in pf.name.lower():
+                continue
+            try:
+                code_text = pf.read_text(encoding="utf-8", errors="ignore")
+                if len(code_text.strip()) > 50:
+                    out_path = py_dir / f"algo_py_{py_count:04d}_{pf.name}.txt"
+                    if not out_path.exists():
+                        out_path.write_text(code_text, encoding="utf-8")
+                        py_count += 1
+            except Exception:
+                continue
+        logger.info(f"TheAlgorithms/Python tamamlandı: {py_count} dosya.")
+    except Exception as e:
+        logger.warning(f"TheAlgorithms/Python hatası: {e}")
+    finally:
+        shutil.rmtree(temp_py, ignore_errors=True)
+
+    # 2. TheAlgorithms/C Klonla
+    temp_c = tempfile.mkdtemp(prefix="algo_c_")
+    try:
+        logger.info("TheAlgorithms/C klonlanıyor...")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "https://github.com/TheAlgorithms/C.git", temp_c],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+        )
+        c_files = sorted(Path(temp_c).rglob("*.[ch]"))
+        c_count = len(existing_c)
+        for cf in c_files:
+            try:
+                code_text = cf.read_text(encoding="utf-8", errors="ignore")
+                if len(code_text.strip()) > 50:
+                    out_path = c_dir / f"algo_c_{c_count:04d}_{cf.name}.txt"
+                    if not out_path.exists():
+                        out_path.write_text(code_text, encoding="utf-8")
+                        c_count += 1
+            except Exception:
+                continue
+        logger.info(f"TheAlgorithms/C tamamlandı: {c_count} dosya.")
+    except Exception as e:
+        logger.warning(f"TheAlgorithms/C hatası: {e}")
+    finally:
+        shutil.rmtree(temp_c, ignore_errors=True)
+
+    # 3. Python Kod Örneklemi (HuggingFace flytech/python-codes-25k) -> 3000'e tamamla
+    current_py = len(list(py_dir.glob("*.txt")))
+    needed_py = max(0, 3000 - current_py)
+    if needed_py > 0:
+        logger.info(f"HuggingFace üzerinden {needed_py} adet Python kodu indiriliyor...")
+        try:
+            import json
+            hf_url = "https://huggingface.co/datasets/flytech/python-codes-25k/resolve/main/python-codes-25k.jsonl"
+            r = session.get(hf_url, stream=True, timeout=30)
+            added_py = 0
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    code = data.get("output", "")
+                    if code and len(code.strip()) > 80:
+                        out_path = py_dir / f"hf_py_{added_py:04d}.txt"
+                        if not out_path.exists():
+                            out_path.write_text(code.strip(), encoding="utf-8")
+                            added_py += 1
+                            if added_py >= needed_py:
+                                break
+                except Exception:
+                    continue
+            logger.info(f"HuggingFace'den {added_py} Python dosyası eklendi.")
+        except Exception as e:
+            logger.warning(f"HF Python veri hatası: {e}")
+
+    # 4. C Kod Örneklemi (xv6-riscv / git C algorithms) -> 2000'e tamamla
+    current_c = len(list(c_dir.glob("*.txt")))
+    needed_c = max(0, 2000 - current_c)
+    if needed_c > 0:
+        logger.info(f"Ek C algoritmaları indiriliyor ({needed_c} dosya)...")
+        temp_c_extra = tempfile.mkdtemp(prefix="xv6_clone_")
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "https://github.com/mit-pdos/xv6-riscv.git", temp_c_extra],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=120,
+            )
+            extra_files = sorted(Path(temp_c_extra).rglob("*.[ch]"))
+            added_c = 0
+            for ef in extra_files:
+                try:
+                    code_text = ef.read_text(encoding="utf-8", errors="ignore")
+                    if len(code_text.strip()) > 50:
+                        out_path = c_dir / f"xv6_{added_c:04d}_{ef.name}.txt"
+                        if not out_path.exists():
+                            out_path.write_text(code_text, encoding="utf-8")
+                            added_c += 1
+                            if added_c >= needed_c:
+                                break
+                except Exception:
+                    continue
+            logger.info(f"xv6-riscv'den {added_c} C dosyası eklendi.")
+        except Exception as e:
+            logger.warning(f"xv6 klonlama hatası: {e}")
+        finally:
+            shutil.rmtree(temp_c_extra, ignore_errors=True)
+
+    current_c = len(list(c_dir.glob("*.txt")))
+    needed_c = max(0, 2000 - current_c)
+    if needed_c > 0:
+        temp_git = tempfile.mkdtemp(prefix="git_clone_")
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "https://github.com/git/git.git", temp_git],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=120,
+            )
+            git_c_files = sorted(Path(temp_git).rglob("*.[ch]"))
+            added_c = 0
+            for gf in git_c_files:
+                try:
+                    code_text = gf.read_text(encoding="utf-8", errors="ignore")
+                    if len(code_text.strip()) > 50:
+                        out_path = c_dir / f"git_{added_c:04d}_{gf.name}.txt"
+                        if not out_path.exists():
+                            out_path.write_text(code_text, encoding="utf-8")
+                            added_c += 1
+                            if added_c >= needed_c:
+                                break
+                except Exception:
+                    continue
+            logger.info(f"git/git'den {added_c} C dosyası eklendi.")
+        except Exception as e:
+            logger.warning(f"git repo klonlama hatası: {e}")
+        finally:
+            shutil.rmtree(temp_git, ignore_errors=True)
+
+    current_c = len(list(c_dir.glob("*.txt")))
+    needed_c = max(0, 2000 - current_c)
+    if needed_c > 0:
+        temp_curl = tempfile.mkdtemp(prefix="curl_clone_")
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "https://github.com/curl/curl.git", temp_curl],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=120,
+            )
+            curl_c_files = sorted(Path(temp_curl).rglob("*.[ch]"))
+            added_c = 0
+            for cf in curl_c_files:
+                try:
+                    code_text = cf.read_text(encoding="utf-8", errors="ignore")
+                    if len(code_text.strip()) > 50:
+                        out_path = c_dir / f"curl_{added_c:04d}_{cf.name}.txt"
+                        if not out_path.exists():
+                            out_path.write_text(code_text, encoding="utf-8")
+                            added_c += 1
+                            if added_c >= needed_c:
+                                break
+                except Exception:
+                    continue
+            logger.info(f"curl/curl'den {added_c} C dosyası eklendi.")
+        except Exception as e:
+            logger.warning(f"curl repo klonlama hatası: {e}")
+        finally:
+            shutil.rmtree(temp_curl, ignore_errors=True)
+
+    total_code = len(list(py_dir.glob("*.txt"))) + len(list(c_dir.glob("*.txt")))
+    logger.info(f"Kod korpusu tamamlandı: Toplam {total_code} dosya ({len(list(py_dir.glob('*.txt')))} Python, {len(list(c_dir.glob('*.txt')))} C).")
+
+
 # ==============================================================================
 # 4. Ana Çalıştırma Döngüsü ve Raporlama
 # ==============================================================================
@@ -1207,7 +1533,13 @@ def main():
     # 11. Yerel telifli kitap denetimi
     check_local_required()
 
-    # 12. Düşük kaliteli PDF raporunu kaydet
+    # 12. Türkçe CS korpusu (tr_docs: Vikipedi ve açık erişim üniversite tezleri)
+    process_turkish_corpus(session, pdf_stats, low_quality_list)
+
+    # 13. Kod ağırlıklı veri seti (code_docs: 5.000 Python ve C dosyası)
+    process_code_corpus(session, target_count=5000)
+
+    # 14. Düşük kaliteli PDF raporunu kaydet
     save_low_quality_report(low_quality_list)
 
     # ==========================================================================
