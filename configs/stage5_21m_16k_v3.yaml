@@ -1,0 +1,42 @@
+defaults:
+  - default
+
+device:
+  prefer: tpu
+
+data:
+  name: bpe_lm
+  train_bin: data/processed/bpe_train_v3.bin
+  val_bin: data/processed/bpe_val_v3.bin
+  tokenizer_path: data/processed/tokenizer_bpe_v2.json
+  block_size: 128
+  batch_size: 64
+
+model:
+  name: stage5_21m
+  vocab_size: 16384
+  embed_dim: 640
+  hidden_size: 640
+  num_steps: 32
+  beta: 0.9
+  tie_weights: false
+  use_cython: false
+
+training:
+  epochs: 1
+  learning_rate: 0.0003
+  optimizer: adam
+  warmup_steps: 1000
+  clip_grad_norm: 1.0
+  checkpoint_every: 2000
+  resume: auto
+  checkpoint_dir: checkpoints
+  device: tpu
+  log_every: 50
+  chars_per_token: 3.29
+
+generation:
+  max_new_tokens: 60
+  temperature: 0.8
+  top_k: 40
+  top_p: 0.9

@@ -1,6 +1,13 @@
-"""Mergen-SNN — Disk Dostu (Streaming) Veri Toplama Kaynakları.
+"""Mergen-SNN — Disk Dostu (Streaming) Veri Toplama Kaynakları (v3 Dengeli Karışım).
 
-Ham veriyi diske kaydetmeden doğrudan RAM'de temizler ve stream eder.
+Ham veriyi diske kaydetmeden doğrudan RAM'de temizler ve dengeli stream eder.
+Yeni Oranlar:
+- Kod (The Stack / codeparrot): %55 (~594M token)
+- Türkçe Wikipedia (CulturaX / wikimedia): %15 (~162M token)
+- FineWeb (genel web / CS): %15 (~162M token)
+- S2ORC / ML-ArXiv (bilimsel CS): %10 (~108M token)
+- Mevcut Korpus (yerel .txt): %5 (~54M token)
+Toplam: 1.08 Milyar token (~3.66 GB metin).
 """
 
 import gc
@@ -8,7 +15,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Generator, Tuple, Dict, Any
+from typing import Generator, Tuple, Dict, Any, Optional
 
 from mergen.utils.logger import get_logger
 
@@ -24,6 +31,24 @@ LIGATURE_MAP = {
     "\u0153": "oe",
     "\u00c6": "AE",
     "\u00e6": "ae",
+}
+
+# 1.08B Token Hedef Kotaları
+DEFAULT_TOKEN_QUOTAS = {
+    "The Stack / Code": 594_000_000,   # %55
+    "CulturaX / TR": 162_000_000,      # %15
+    "FineWeb": 162_000_000,            # %15
+    "S2ORC / ArXiv": 108_000_000,      # %10
+    "Mevcut Local TXT": 54_000_000,    # %5
+}
+
+# Bayt Eşdeğerleri (~3.3 bayt/token)
+DEFAULT_BYTE_QUOTAS = {
+    "The Stack / Code": int(594_000_000 * 3.5),   # ~2079 MB
+    "CulturaX / TR": int(162_000_000 * 3.0),      # ~486 MB
+    "FineWeb": int(162_000_000 * 3.5),            # ~567 MB
+    "S2ORC / ArXiv": int(108_000_000 * 3.6),      # ~388 MB
+    "Mevcut Local TXT": int(54_000_000 * 3.3),    # ~178 MB
 }
 
 
@@ -44,19 +69,17 @@ def clean_text(text: str) -> str:
     return "".join(cleaned)
 
 
-def stream_the_stack(target_bytes: int = 1500 * 1024 * 1024) -> Generator[str, None, Tuple[int, int]]:
-    """The Stack v2 (veya açık kod alternatifi codeparrot) üzerinden kod verisi akışı."""
+def stream_the_stack(target_bytes: int = DEFAULT_BYTE_QUOTAS["The Stack / Code"]) -> Generator[str, None, Tuple[int, int]]:
+    """The Stack v2 / codeparrot üzerinden kod verisi akışı (%55)."""
     from datasets import load_dataset
 
     bytes_collected = 0
     doc_count = 0
-    
-    # 1. İlk olarak kullanıcının belirttiği bigcode/the-stack-v2'yi dene
+
     ds = None
     try:
         logger.info("The Stack v2 bağlanmaya çalışılıyor (bigcode/the-stack-v2)...")
         ds = load_dataset("bigcode/the-stack-v2", streaming=True, split="train")
-        # Test iterator
         test_it = iter(ds)
         first = next(test_it)
         logger.info("bigcode/the-stack-v2 başarıyla bağlandı!")
@@ -75,7 +98,7 @@ def stream_the_stack(target_bytes: int = 1500 * 1024 * 1024) -> Generator[str, N
         text = clean_text(text)
         if len(text.strip()) < 50:
             continue
-        
+
         encoded_len = len(text.encode("utf-8"))
         bytes_collected += encoded_len
         doc_count += 1
@@ -84,7 +107,7 @@ def stream_the_stack(target_bytes: int = 1500 * 1024 * 1024) -> Generator[str, N
         if doc_count % 1000 == 0:
             elapsed = time.time() - t0
             mb = bytes_collected / (1024 * 1024)
-            logger.info(f"[The Stack/Code] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
+            logger.info(f"[The Stack/Code %55] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
             gc.collect()
 
         if bytes_collected >= target_bytes:
@@ -93,8 +116,8 @@ def stream_the_stack(target_bytes: int = 1500 * 1024 * 1024) -> Generator[str, N
     return bytes_collected, doc_count
 
 
-def stream_culturax_tr(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, None, Tuple[int, int]]:
-    """CulturaX Türkçe (veya açık Türkçe Wikipedia) metin akışı."""
+def stream_culturax_tr(target_bytes: int = DEFAULT_BYTE_QUOTAS["CulturaX / TR"]) -> Generator[str, None, Tuple[int, int]]:
+    """CulturaX Türkçe / Wikipedia TR metin akışı (%15)."""
     from datasets import load_dataset
 
     bytes_collected = 0
@@ -131,7 +154,7 @@ def stream_culturax_tr(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str,
         if doc_count % 1000 == 0:
             elapsed = time.time() - t0
             mb = bytes_collected / (1024 * 1024)
-            logger.info(f"[CulturaX/TR] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
+            logger.info(f"[CulturaX/TR %15] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
             gc.collect()
 
         if bytes_collected >= target_bytes:
@@ -140,8 +163,8 @@ def stream_culturax_tr(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str,
     return bytes_collected, doc_count
 
 
-def stream_s2orc(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, None, Tuple[int, int]]:
-    """S2ORC CS makaleleri (veya ML-ArXiv-Papers) metin akışı."""
+def stream_s2orc(target_bytes: int = DEFAULT_BYTE_QUOTAS["S2ORC / ArXiv"]) -> Generator[str, None, Tuple[int, int]]:
+    """S2ORC / ML-ArXiv CS makaleleri metin akışı (%10)."""
     from datasets import load_dataset
 
     bytes_collected = 0
@@ -155,7 +178,7 @@ def stream_s2orc(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, None,
         first = next(test_it)
         logger.info("allenai/s2orc başarıyla bağlandı!")
     except Exception as e:
-        logger.warning(f"SKIP: allenai/s2orc doğrudan streaming desteklemiyor/erişilemedi ({type(e).__name__}: {e}). Alternatif CS kaynağı 'CShorten/ML-ArXiv-Papers' devreye alınıyor...")
+        logger.warning(f"SKIP: allenai/s2orc erişilemedi ({type(e).__name__}: {e}). Alternatif CS kaynağı 'CShorten/ML-ArXiv-Papers' devreye alınıyor...")
         try:
             ds = load_dataset("CShorten/ML-ArXiv-Papers", streaming=True, split="train")
             logger.info("CShorten/ML-ArXiv-Papers akışı başlatıldı.")
@@ -180,7 +203,7 @@ def stream_s2orc(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, None,
         if doc_count % 1000 == 0:
             elapsed = time.time() - t0
             mb = bytes_collected / (1024 * 1024)
-            logger.info(f"[S2ORC/ArXiv] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
+            logger.info(f"[S2ORC/ArXiv %10] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
             gc.collect()
 
         if bytes_collected >= target_bytes:
@@ -189,8 +212,8 @@ def stream_s2orc(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, None,
     return bytes_collected, doc_count
 
 
-def stream_fineweb(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, None, Tuple[int, int]]:
-    """FineWeb genel İngilizce metin akışı."""
+def stream_fineweb(target_bytes: int = DEFAULT_BYTE_QUOTAS["FineWeb"]) -> Generator[str, None, Tuple[int, int]]:
+    """FineWeb genel İngilizce/CS metin akışı (%15)."""
     from datasets import load_dataset
 
     bytes_collected = 0
@@ -219,7 +242,7 @@ def stream_fineweb(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, Non
         if doc_count % 1000 == 0:
             elapsed = time.time() - t0
             mb = bytes_collected / (1024 * 1024)
-            logger.info(f"[FineWeb] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
+            logger.info(f"[FineWeb %15] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB ({mb/(target_bytes/(1024*1024))*100:.1f}%) | {doc_count/max(elapsed, 0.1):.1f} doc/s")
             gc.collect()
 
         if bytes_collected >= target_bytes:
@@ -228,8 +251,8 @@ def stream_fineweb(target_bytes: int = 1000 * 1024 * 1024) -> Generator[str, Non
     return bytes_collected, doc_count
 
 
-def stream_local_txt(raw_dir: Path = Path("data/raw/cs_corpus"), target_bytes: int = 500 * 1024 * 1024) -> Generator[str, None, Tuple[int, int]]:
-    """data/raw/cs_corpus/ altındaki mevcut .txt dosyalarından metin akışı."""
+def stream_local_txt(raw_dir: Path = Path("data/raw/cs_corpus"), target_bytes: int = DEFAULT_BYTE_QUOTAS["Mevcut Local TXT"]) -> Generator[str, None, Tuple[int, int]]:
+    """data/raw/cs_corpus/ altındaki mevcut .txt dosyalarından metin akışı (%5)."""
     bytes_collected = 0
     doc_count = 0
 
@@ -258,44 +281,73 @@ def stream_local_txt(raw_dir: Path = Path("data/raw/cs_corpus"), target_bytes: i
             if doc_count % 1000 == 0:
                 elapsed = time.time() - t0
                 mb = bytes_collected / (1024 * 1024)
-                logger.info(f"[Local TXT] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB | {doc_count/max(elapsed, 0.1):.1f} doc/s")
+                logger.info(f"[Local TXT %5] {doc_count:,} döküman | {mb:.1f} MB / {target_bytes/(1024*1024):.0f} MB | {doc_count/max(elapsed, 0.1):.1f} doc/s")
                 gc.collect()
 
             if bytes_collected >= target_bytes:
                 break
-        except Exception as e:
+        except Exception:
             continue
 
     return bytes_collected, doc_count
 
 
-def stream_all_sources(quotas: Dict[str, int] = None) -> Generator[Tuple[str, str], None, None]:
-    """Tüm 5 kaynaktan sırayla (kaynak_adı, metin) ikilileri üretir."""
+def stream_all_sources(quotas: Dict[str, int] = None, interleave: bool = True) -> Generator[Tuple[str, str], None, None]:
+    """Tüm 5 kaynaktan yeni dengeli oranlarla (%55 Kod, %15 TR, %15 FineWeb, %10 ArXiv, %5 Local) (kaynak_adı, metin) ikilileri üretir.
+    
+    interleave=True ise kaynaklar 11:3:3:2:1 oranında dönüşümlü (round-robin) çekilir.
+    Böylece veri kümesinin her diliminde kod ve diğer tüm alanlar homojen olarak dağılır.
+    """
     if quotas is None:
-        quotas = {
-            "The Stack / Code": 1500 * 1024 * 1024,
-            "CulturaX / TR": 1000 * 1024 * 1024,
-            "S2ORC / ArXiv": 1000 * 1024 * 1024,
-            "FineWeb": 1000 * 1024 * 1024,
-            "Mevcut Local TXT": 500 * 1024 * 1024,
-        }
+        quotas = DEFAULT_BYTE_QUOTAS
 
-    # 1. Local TXT
-    for text in stream_local_txt(target_bytes=quotas.get("Mevcut Local TXT", 500 * 1024 * 1024)):
-        yield "Mevcut Local TXT", text
+    if not interleave:
+        # Kod öncelikli sıralı akış
+        for text in stream_the_stack(target_bytes=quotas.get("The Stack / Code", DEFAULT_BYTE_QUOTAS["The Stack / Code"])):
+            yield "The Stack / Code", text
 
-    # 2. CulturaX / Turkish
-    for text in stream_culturax_tr(target_bytes=quotas.get("CulturaX / TR", 1000 * 1024 * 1024)):
-        yield "CulturaX / TR", text
+        for text in stream_culturax_tr(target_bytes=quotas.get("CulturaX / TR", DEFAULT_BYTE_QUOTAS["CulturaX / TR"])):
+            yield "CulturaX / TR", text
 
-    # 3. The Stack / Code
-    for text in stream_the_stack(target_bytes=quotas.get("The Stack / Code", 1500 * 1024 * 1024)):
-        yield "The Stack / Code", text
+        for text in stream_fineweb(target_bytes=quotas.get("FineWeb", DEFAULT_BYTE_QUOTAS["FineWeb"])):
+            yield "FineWeb", text
 
-    # 4. S2ORC / CS Papers
-    for text in stream_s2orc(target_bytes=quotas.get("S2ORC / ArXiv", 1000 * 1024 * 1024)):
-        yield "S2ORC / ArXiv", text
+        for text in stream_s2orc(target_bytes=quotas.get("S2ORC / ArXiv", DEFAULT_BYTE_QUOTAS["S2ORC / ArXiv"])):
+            yield "S2ORC / ArXiv", text
 
-    # 5. FineWeb
-    for text in stream_fineweb(target_bytes=quotas.get("FineWeb", 1000 * 1024 * 1024)):
-        yield "FineWeb", text
+        for text in stream_local_txt(target_bytes=quotas.get("Mevcut Local TXT", DEFAULT_BYTE_QUOTAS["Mevcut Local TXT"])):
+            yield "Mevcut Local TXT", text
+        return
+
+    # Homojen Dönüşümlü (Round-Robin Interleaved) Akış: 11 Kod, 3 TR, 3 FineWeb, 2 ArXiv, 1 Local
+    generators = {
+        "The Stack / Code": iter(stream_the_stack(target_bytes=quotas.get("The Stack / Code", DEFAULT_BYTE_QUOTAS["The Stack / Code"]))),
+        "CulturaX / TR": iter(stream_culturax_tr(target_bytes=quotas.get("CulturaX / TR", DEFAULT_BYTE_QUOTAS["CulturaX / TR"]))),
+        "FineWeb": iter(stream_fineweb(target_bytes=quotas.get("FineWeb", DEFAULT_BYTE_QUOTAS["FineWeb"]))),
+        "S2ORC / ArXiv": iter(stream_s2orc(target_bytes=quotas.get("S2ORC / ArXiv", DEFAULT_BYTE_QUOTAS["S2ORC / ArXiv"]))),
+        "Mevcut Local TXT": iter(stream_local_txt(target_bytes=quotas.get("Mevcut Local TXT", DEFAULT_BYTE_QUOTAS["Mevcut Local TXT"]))),
+    }
+
+    # Her döngüde çekilecek parça sayıları (Toplam 20 parça: 11/20=%55, 3/20=%15, 3/20=%15, 2/20=%10, 1/20=%5)
+    ratios = {
+        "The Stack / Code": 11,
+        "CulturaX / TR": 3,
+        "FineWeb": 3,
+        "S2ORC / ArXiv": 2,
+        "Mevcut Local TXT": 1,
+    }
+
+    active_sources = set(generators.keys())
+
+    while active_sources:
+        for src in list(active_sources):
+            gen = generators[src]
+            take_count = ratios[src]
+            for _ in range(take_count):
+                try:
+                    text = next(gen)
+                    yield src, text
+                except StopIteration:
+                    logger.info(f"Kaynak tamamlandı: {src}")
+                    active_sources.discard(src)
+                    break
