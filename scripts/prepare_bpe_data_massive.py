@@ -137,7 +137,7 @@ def main():
                     total_val_tokens += doc_len
                 buffer_token_count += doc_len
 
-        for src, text in stream_all_sources(interleave=True):
+        for src, text in stream_all_sources(interleave=False):
             # Eğer tüm kotalar dolduysa sonlandır
             total_current = total_train_tokens + total_val_tokens
             if total_current >= TOTAL_TARGET_TOKENS:
