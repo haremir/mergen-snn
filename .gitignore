@@ -48,6 +48,7 @@ data/processed/*
 !data/processed/.gitkeep
 !data/processed/charset.json
 !data/processed/tokenizer_bpe.json
+!data/processed/tokenizer_bpe_v2.json
 
 data/sft/*.bin
 
