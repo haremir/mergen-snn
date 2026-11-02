@@ -83,11 +83,16 @@ def main():
     cfg = load_config(args.config)
 
     is_bpe = (
-        cfg.get("model", {}).get("name") in ("bpe_snn_lm", "small_snn_lm")
+        cfg.get("model", {}).get("name") in ("bpe_snn_lm", "small_snn_lm", "stage5_21m")
         or cfg.get("data", {}).get("name") == "bpe_lm"
+        or "bpe" in str(cfg.get("data", {}).get("train_bin", ""))
+        or cfg.get("model", {}).get("vocab_size", 0) > 256
     )
     model_name = cfg.get("model", {}).get("name", "")
-    if model_name == "small_snn_lm":
+    if "stage5" in model_name or "21m" in model_name or cfg.get("model", {}).get("vocab_size") == 16384:
+        prefix = "stage5_21m"
+        stage_title = "Aşama 5: 21M BPE SNN (TPU)"
+    elif model_name == "small_snn_lm":
         prefix = "small_lm"
         stage_title = "Aşama 4: Small SNN (~9M Parametre)"
     elif is_bpe:
@@ -101,7 +106,14 @@ def main():
     logger.info(f"Mergen-SNN — {stage_title} Eğitimi")
     logger.info("==========================================")
 
-    prefer_device = cfg.get("device", {}).get("prefer", "cpu")
+    dev_cfg = cfg.get("device")
+    if isinstance(dev_cfg, dict):
+        prefer_device = dev_cfg.get("prefer", "auto")
+    elif isinstance(dev_cfg, str):
+        prefer_device = dev_cfg
+    else:
+        prefer_device = cfg.get("training", {}).get("device", "auto")
+
     device = get_device(prefer=prefer_device)
     dev_name = device_name(device)
 
@@ -139,11 +151,32 @@ def main():
     # Tokenizer ve Vocab Boyutu
     if is_bpe:
         from tokenizers import Tokenizer
-        tok_path = Path(cfg.get("data", {}).get("tokenizer_path", data_dir / "tokenizer_bpe.json"))
+        tok_cfg = cfg.get("data", {}).get("tokenizer_path")
+        if tok_cfg and Path(tok_cfg).exists():
+            tok_path = Path(tok_cfg)
+        elif (data_dir / "tokenizer_bpe_v2.json").exists():
+            tok_path = data_dir / "tokenizer_bpe_v2.json"
+        else:
+            tok_path = data_dir / "tokenizer_bpe.json"
+
         tokenizer = Tokenizer.from_file(str(tok_path))
-        vocab_size = tokenizer.get_vocab_size()
-        train_bin = Path(cfg.get("data", {}).get("train_bin", data_dir / "bpe_train.bin"))
-        val_bin = Path(cfg.get("data", {}).get("val_bin", data_dir / "bpe_val.bin"))
+        vocab_size = int(cfg.get("model", {}).get("vocab_size", tokenizer.get_vocab_size()))
+
+        train_bin_cfg = cfg.get("data", {}).get("train_bin")
+        if train_bin_cfg and Path(train_bin_cfg).exists():
+            train_bin = Path(train_bin_cfg)
+        elif (data_dir / "bpe_train_v2.bin").exists():
+            train_bin = data_dir / "bpe_train_v2.bin"
+        else:
+            train_bin = data_dir / "bpe_train.bin"
+
+        val_bin_cfg = cfg.get("data", {}).get("val_bin")
+        if val_bin_cfg and Path(val_bin_cfg).exists():
+            val_bin = Path(val_bin_cfg)
+        elif (data_dir / "bpe_val_v2.bin").exists():
+            val_bin = data_dir / "bpe_val_v2.bin"
+        else:
+            val_bin = data_dir / "bpe_val.bin"
     else:
         charset_path = data_dir / "charset.json"
         stoi, _ = load_charset(charset_path)
@@ -172,6 +205,15 @@ def main():
 
     # Model oluştur
     tie_weights = bool(cfg.get("model", {}).get("tie_weights", True if embed_dim == hidden_size else False))
+    use_cython_cfg = cfg.get("model", {}).get("use_cython")
+    if use_cython_cfg is not None:
+        use_cython = bool(use_cython_cfg)
+    else:
+        use_cython = (getattr(device, "type", "") == "cpu")
+
+    if getattr(device, "type", "") in ("tpu", "privateuseone", "cuda"):
+        use_cython = False
+
     if is_bpe:
         model = BpeSNNLM(
             vocab_size=vocab_size,
@@ -179,7 +221,7 @@ def main():
             hidden_size=hidden_size,
             beta=beta,
             tie_weights=tie_weights,
-            use_cython=(getattr(device, "type", "") == "cpu"),
+            use_cython=use_cython,
         ).to(device)
     else:
         model = CharSNNLM(
@@ -381,10 +423,11 @@ def main():
 
         # Checkpoint kaydet
         ckpt_path = checkpoints_dir / f"{prefix}_epoch{epoch + 1}.pt"
+        cpu_model_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
         ckpt_payload = {
             "epoch": epoch + 1,
             "step": global_step,
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": cpu_model_state,
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
             "train_loss": train_loss,
@@ -413,10 +456,11 @@ def main():
 
     # Final model checkpoint
     final_ckpt_path = checkpoints_dir / f"{prefix}_final.pt"
+    cpu_model_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
     torch.save(
         {
             "epoch": len(train_losses),
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": cpu_model_state,
             "optimizer_state_dict": optimizer.state_dict(),
             "train_loss": train_losses[-1] if train_losses else None,
             "val_loss": val_losses[-1] if val_losses else None,

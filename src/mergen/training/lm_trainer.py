@@ -113,11 +113,13 @@ def train_epoch_lm(
         # Step-level Checkpointing (Adım 2: Her checkpoint_every adımda kaydet, son 3'ü tut)
         if checkpoint_every and checkpoint_dir and (global_step % checkpoint_every == 0):
             ckpt_path = Path(checkpoint_dir) / f"{checkpoint_prefix}_step{global_step}.pt"
+            # CPU'ya güvenli taşıyarak kaydet (TPU/GPU/CPU taşınabilirliği için)
+            cpu_model_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
             torch.save(
                 {
                     "step": global_step,
                     "epoch": epoch_idx + 1,
-                    "model_state_dict": model.state_dict(),
+                    "model_state_dict": cpu_model_state,
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
                     "best_val_loss": best_val_loss,

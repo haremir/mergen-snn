@@ -10,7 +10,8 @@ LOCAL_CKPT_DIR.mkdir(parents=True, exist_ok=True)
 LOCAL_LOG = REPO_DIR / "runs" / "colab_live_train.log"
 LOCAL_LOG.parent.mkdir(parents=True, exist_ok=True)
 
-SESSION_NAME = "mergen-snn"
+import sys
+SESSION_NAME = os.environ.get("COLAB_SESSION", sys.argv[1] if len(sys.argv) > 1 else "mergen-tpu")
 
 print(f"Colab Monitor & Auto-Sync daemon started for session '{SESSION_NAME}'...")
 
@@ -113,7 +114,7 @@ while not done:
                         print(f"[{time.strftime('%H:%M:%S')}] Download error for {name}: {dl_res.stderr}")
             
             # Check if finished
-            if not is_running and any(rf["name"] == "small_lm_final.pt" for rf in remote_files):
+            if not is_running and any("final.pt" in rf["name"] for rf in remote_files):
                 print(f"[{time.strftime('%H:%M:%S')}] Training completed and final checkpoints saved!")
                 done = True
                 break

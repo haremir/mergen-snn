@@ -2,9 +2,9 @@ import torch
 
 
 def get_device(prefer: str = "auto"):
-    """prefer: 'auto' | 'cpu' | 'directml' | 'cuda'"""
-    if prefer == "cpu":
-        return torch.device("cpu")
+    """prefer: 'auto' | 'cpu' | 'directml' | 'cuda' | 'tpu'"""
+    if prefer == "tpu":
+        return torch.device("tpu")
     if prefer == "cuda":
         if torch.cuda.is_available():
             return torch.device("cuda")
@@ -17,7 +17,15 @@ def get_device(prefer: str = "auto"):
         if torch_directml.device_count() == 0:
             raise RuntimeError("DirectML cihazı bulunamadı.")
         return torch_directml.device()
+    if prefer == "cpu":
+        return torch.device("cpu")
+
     # auto
+    try:
+        t = torch.ones((1,), device=torch.device("tpu"))
+        return torch.device("tpu")
+    except Exception:
+        pass
     if torch.cuda.is_available():
         return torch.device("cuda")
     try:
@@ -30,6 +38,8 @@ def get_device(prefer: str = "auto"):
 
 
 def device_name(device) -> str:
+    if getattr(device, "type", "") == "tpu":
+        return f"TPU ({device})"
     if getattr(device, "type", "") == "privateuseone":
-        return f"DirectML ({device})"
+        return f"DirectML/PrivateUse ({device})"
     return str(device)
