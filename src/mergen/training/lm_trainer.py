@@ -85,9 +85,10 @@ def train_epoch_lm(
         else:
             logits = model(x, num_steps)
 
+        target = y[:, :logits.size(1)] if y.size(1) > logits.size(1) else y
         loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
-            y.reshape(-1),
+            target.reshape(-1),
         )
 
         optimizer.zero_grad()
@@ -102,7 +103,7 @@ def train_epoch_lm(
         if scheduler is not None:
             scheduler.step()
 
-        tokens_in_batch = x.numel()
+        tokens_in_batch = target.numel()
         batch_loss = loss.item()
         total_loss += batch_loss * tokens_in_batch
         total_tokens += tokens_in_batch
@@ -217,12 +218,13 @@ def eval_epoch_lm(
             y = y.to(device)
 
             logits = model(x, num_steps)
+            target = y[:, :logits.size(1)] if y.size(1) > logits.size(1) else y
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)),
-                y.reshape(-1),
+                target.reshape(-1),
             )
 
-            tokens_in_batch = x.numel()
+            tokens_in_batch = target.numel()
             total_loss += loss.item() * tokens_in_batch
             total_tokens += tokens_in_batch
             step_count += 1
