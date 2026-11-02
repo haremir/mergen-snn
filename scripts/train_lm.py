@@ -318,7 +318,7 @@ def main():
         if resume_target and resume_target.exists():
             logger.info(f"Resume checkpoint yükleniyor: {resume_target}")
             try:
-                map_loc = "cpu" if getattr(device, "type", "") == "privateuseone" else device
+                map_loc = "cpu"
                 ckpt_data = torch.load(resume_target, map_location=map_loc, weights_only=False)
                 ckpt_embed = ckpt_data.get("embed_dim", embed_dim)
                 ckpt_hidden = ckpt_data.get("hidden_size", hidden_size)
