@@ -217,7 +217,7 @@ def main():
     map_loc = "cpu" if getattr(device, "type", "") == "privateuseone" else device
     checkpoint = torch.load(ckpt_path, map_location=map_loc, weights_only=False)
 
-    is_bpe = checkpoint.get("is_bpe", False) or "bpe" in ckpt_path.name.lower() or "small_lm" in ckpt_path.name.lower()
+    is_bpe = checkpoint.get("is_bpe", False) or "bpe" in ckpt_path.name.lower() or "small_lm" in ckpt_path.name.lower() or "stage5" in ckpt_path.name.lower()
     vocab_size = checkpoint.get("vocab_size", 8192 if is_bpe else 460)
     embed_dim = checkpoint.get("embed_dim", 512 if is_bpe else 128)
     hidden_size = checkpoint.get("hidden_size", 1024 if is_bpe else 256)
@@ -231,7 +231,10 @@ def main():
 
     if is_bpe:
         from tokenizers import Tokenizer
-        tokenizer_path = data_dir / "tokenizer_bpe.json"
+        if vocab_size == 16384 or "stage5" in ckpt_path.name.lower():
+            tokenizer_path = data_dir / "tokenizer_bpe_v2.json"
+        else:
+            tokenizer_path = data_dir / "tokenizer_bpe.json"
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
         tie_weights = checkpoint.get("tie_weights", embed_dim == hidden_size)
         model = BpeSNNLM(
@@ -258,7 +261,7 @@ def main():
     prompts = [
         "Python'da liste",
         "def train(",
-        "The algorithm ",
+        "Algoritma nedir?",
     ]
 
     print("\n" + "=" * 70)
