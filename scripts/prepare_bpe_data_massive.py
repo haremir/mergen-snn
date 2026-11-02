@@ -13,6 +13,10 @@ import sys
 import time
 from typing import Dict
 
+repo_root = Path(__file__).resolve().parent.parent
+if str(repo_root / "src") not in sys.path:
+    sys.path.insert(0, str(repo_root / "src"))
+
 import numpy as np
 from tokenizers import Tokenizer
 

@@ -11,6 +11,10 @@ import sys
 import time
 from typing import Dict, Optional
 
+repo_root = Path(__file__).resolve().parent.parent
+if str(repo_root / "src") not in sys.path:
+    sys.path.insert(0, str(repo_root / "src"))
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
