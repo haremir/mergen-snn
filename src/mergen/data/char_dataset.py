@@ -13,13 +13,26 @@ from torch.utils.data import Dataset
 
 
 class CharDataset(Dataset):
-    """Karakter seviyesi dil modeli için sabit pencereli PyTorch veri kümesi."""
+    """Karakter ve BPE seviyesi dil modeli için sabit pencereli PyTorch veri kümesi."""
 
     def __init__(self, bin_path: Union[str, Path], block_size: int = 32, stride: Optional[int] = None):
-        # np.load ile yükle ve int64 (PyTorch LongTensor) tipine dönüştür
-        self.data = np.load(bin_path).astype(np.int64)
         self.block_size = block_size
         self.stride = stride if stride is not None else block_size
+        bin_path = Path(bin_path)
+
+        # Dosyanın npy formatında mı yoksa ham uint16 binary (memmap) formatında mı olduğunu tespit et
+        is_npy = False
+        with open(bin_path, "rb") as f:
+            header = f.read(6)
+            if header == b"\x93NUMPY":
+                is_npy = True
+
+        if is_npy:
+            self.data = np.load(bin_path).astype(np.int64)
+            self._is_memmap = False
+        else:
+            self.data = np.memmap(bin_path, dtype=np.uint16, mode="r")
+            self._is_memmap = True
 
     def __len__(self) -> int:
         if len(self.data) < self.block_size + 1:
@@ -28,8 +41,8 @@ class CharDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         start = idx * self.stride
-        x = self.data[start : start + self.block_size]
-        y = self.data[start + 1 : start + self.block_size + 1]
+        x = np.array(self.data[start : start + self.block_size], dtype=np.int64)
+        y = np.array(self.data[start + 1 : start + self.block_size + 1], dtype=np.int64)
         return torch.from_numpy(x).long(), torch.from_numpy(y).long()
 
 
