@@ -52,5 +52,10 @@ data/processed/*
 
 data/sft/*.bin
 
+# Logs and archives
+*.log
+*.tar.gz
+runs/
+
 # Ensure uv.lock is committed
 !uv.lock

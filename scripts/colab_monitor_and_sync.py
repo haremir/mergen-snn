@@ -67,12 +67,9 @@ while not done:
         ])
         
         if res.returncode != 0:
-            print(f"[{time.strftime('%H:%M:%S')}] Probe failed (returncode {res.returncode}): {res.stderr[:200]}")
-            consecutive_failures += 1
-            if consecutive_failures > 10:
-                print("Too many probe failures. Exiting monitor.")
-                break
+            print(f"[{time.strftime('%H:%M:%S')}] Probe waiting for session '{SESSION_NAME}' (returncode {res.returncode})", flush=True)
             time.sleep(20)
+            continue
             continue
         
         consecutive_failures = 0
