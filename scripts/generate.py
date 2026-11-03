@@ -9,6 +9,10 @@ from pathlib import Path
 import sys
 from typing import Dict, List, Optional, Union
 
+repo_root = Path(__file__).resolve().parent.parent
+if str(repo_root / "src") not in sys.path:
+    sys.path.insert(0, str(repo_root / "src"))
+
 import torch
 import yaml
 
@@ -176,15 +180,17 @@ def main():
     parser = argparse.ArgumentParser(description="Mergen-SNN Metin Üretimi")
     parser.add_argument("--config", type=str, default=None, help="YAML config dosyası")
     parser.add_argument("--checkpoint", type=str, default=None, help="Özel checkpoint yolu")
+    parser.add_argument("--prompt", type=str, default=None, help="Özel prompt metni")
     parser.add_argument("--temperature", type=float, default=None, help="Örnekleme sıcaklığı")
     parser.add_argument("--top_k", type=int, default=None, help="Top-k")
     parser.add_argument("--top_p", type=float, default=None, help="Top-p")
     parser.add_argument("--max_tokens", type=int, default=None, help="Üretilecek token sayısı")
+    parser.add_argument("--device", type=str, default="auto", help="Cihaz tercihi (auto, cuda, cpu)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
 
-    prefer_device = cfg.get("device", {}).get("prefer", "cpu")
+    prefer_device = args.device if args.device != "auto" else cfg.get("training", {}).get("device", cfg.get("device", {}).get("prefer", "auto"))
     device = get_device(prefer=prefer_device)
     dev_name = device_name(device)
 
@@ -258,11 +264,14 @@ def main():
     model.load_state_dict(checkpoint["model_state_dict"], strict=False)
     model.eval()
 
-    prompts = [
-        "Python'da liste",
-        "def train(",
-        "Algoritma nedir?",
-    ]
+    if args.prompt:
+        prompts = [args.prompt]
+    else:
+        prompts = [
+            "Python'da liste",
+            "def train(",
+            "Algoritma nedir?",
+        ]
 
     print("\n" + "=" * 70)
     print(f"MERGEN-SNN — {'STAGE 3 BPE (10M)' if is_bpe else 'STAGE 2 CHAR'} METİN ÜRETİMİ")

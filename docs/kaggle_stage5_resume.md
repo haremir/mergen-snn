@@ -19,14 +19,15 @@ Yerel diskten şu 3 dosyayı Kaggle'a dataset olarak yükleyin:
 
 ## D) Notebook Hücreleri
 
-### Hücre 1
+### Hücre 1: Repoyu Klonla ve Ortamı Kur
 ```python
 !git clone https://github.com/haremir/mergen-snn.git
 %cd mergen-snn
+!pip install -q -e .
 !pip install -q snntorch pyyaml rich numpy datasets
 ```
 
-### Hücre 2
+### Hücre 2: Yüklenen Dosyaları Yerleştir ve Korpusu Aç
 ```python
 import os, shutil, glob
 os.makedirs('data/processed', exist_ok=True)
@@ -46,17 +47,19 @@ for pattern, dest in [
 !mv data/raw/cs_corpus_kaggle data/raw/cs_corpus
 ```
 
-### Hücre 3
+### Hücre 3: Veri Hazırlama (v3 Dengeli Karışım)
 ```python
 !python scripts/prepare_bpe_data_massive.py
 ```
+*(Kaggle fiber interneti ile ~3-4 dakikada 936M token'lık `bpe_train_v3.bin` üretilir)*
 
-### Hücre 4
+### Hücre 4: Eğitimi Başlat / Resume Et
 ```python
 !python scripts/train_lm.py --config configs/stage5_21m_16k_v3_kaggle.yaml --resume auto
 ```
+*(Not: `early_stop_patience: 0` olarak ayarlanmıştır, plato kesintisi olmadan 1 tam epoch - 109.809 adım tamamlanır)*
 
-### Hücre 5
+### Hücre 5: Metin Üretim Testi
 ```python
 !python scripts/generate.py --checkpoint checkpoints/stage5_21m_final.pt --prompt "Python'da liste"
 !python scripts/generate.py --checkpoint checkpoints/stage5_21m_final.pt --prompt "def train("
@@ -64,4 +67,5 @@ for pattern, dest in [
 ```
 
 ## E) Model İndirme
-- Eğitim sonrası sağ üst **Output** panelinden `/kaggle/working/mergen-snn/checkpoints/` altındaki `stage5_21m_final.pt` ve `stage5_21m_best.pt` dosyalarını indirin.
+- Eğitim tamamlandığında sağ paneldeki **Output** sekmesini yenileyin.
+- `/kaggle/working/mergen-snn/checkpoints/` altındaki `stage5_21m_final.pt` ve `stage5_21m_best.pt` dosyalarını indirin.

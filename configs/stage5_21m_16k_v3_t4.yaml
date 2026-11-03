@@ -20,6 +20,7 @@ training:
   warmup_steps: 1000
   clip_grad_norm: 1.0
   checkpoint_every: 2000
+  early_stop_patience: 0
   resume: auto
   checkpoint_dir: checkpoints
   device: cuda

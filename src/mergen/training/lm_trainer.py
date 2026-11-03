@@ -169,19 +169,20 @@ def train_epoch_lm(
             )
             t_last_log = now
 
-            # Plato kontrolü (patience_steps boyunca iyileşme yoksa erken durdur)
-            if curr_loss < best_loss_window - 1e-4:
-                best_loss_window = curr_loss
-                steps_without_improvement = 0
-            else:
-                steps_without_improvement += steps_in_interval
-                if steps_without_improvement >= patience_steps:
-                    logger.warning(
-                        f"UYARI: {steps_without_improvement} adımdır loss düşmüyor (plato tespit edildi: {curr_loss:.4f}). "
-                        f"Erken durdurma tetikleniyor."
-                    )
-                    early_stopped = True
-                    break
+            # Plato kontrolü (patience_steps > 0 ise ve bu süre boyunca iyileşme yoksa erken durdur)
+            if patience_steps and patience_steps > 0:
+                if curr_loss < best_loss_window - 1e-4:
+                    best_loss_window = curr_loss
+                    steps_without_improvement = 0
+                else:
+                    steps_without_improvement += steps_in_interval
+                    if steps_without_improvement >= patience_steps:
+                        logger.warning(
+                            f"UYARI: {steps_without_improvement} adımdır loss düşmüyor (plato tespit edildi: {curr_loss:.4f}). "
+                            f"Erken durdurma tetikleniyor."
+                        )
+                        early_stopped = True
+                        break
 
         if max_steps and current_step_in_epoch >= max_steps:
             break

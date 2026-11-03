@@ -142,7 +142,7 @@ def main():
     warmup_steps = int(cfg.get("training", {}).get("warmup_steps", 500))
     chars_per_token = float(cfg.get("training", {}).get("chars_per_token", 3.29 if is_bpe else 1.0))
     optimizer_name = str(cfg.get("training", {}).get("optimizer", "sgd")).lower()
-    early_stop_patience = int(cfg.get("training", {}).get("early_stop_patience", 3000))
+    early_stop_patience = int(cfg.get("training", {}).get("early_stop_patience", 0))
 
     max_steps_per_epoch = args.max_steps or cfg.get("training", {}).get("max_steps_per_epoch", None)
     if max_steps_per_epoch is not None:
