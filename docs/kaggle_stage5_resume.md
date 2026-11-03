@@ -14,7 +14,7 @@
 ## C) Dosya Yükleme ("Add Input" → "Upload")
 Yerel diskten şu 3 dosyayı Kaggle'a dataset olarak yükleyin:
 - `data/processed/tokenizer_bpe_v2.json`
-- `cs_corpus.tar.gz` (34 MB)
+- `cs_corpus_clean.tar.gz` (34 MB) — *(Yerel: `data/raw/cs_corpus_clean.tar.gz`)*
 - `checkpoints/stage5_21m_step58000.pt` (262 MB)
 
 ## D) Notebook Hücreleri
@@ -34,13 +34,16 @@ os.makedirs('data/raw', exist_ok=True)
 os.makedirs('checkpoints', exist_ok=True)
 for pattern, dest in [
     ('/kaggle/input/**/tokenizer_bpe_v2.json', 'data/processed/'),
-    ('/kaggle/input/**/cs_corpus.tar.gz', 'data/raw/'),
+    ('/kaggle/input/**/cs_corpus_clean.tar.gz', 'data/raw/'),
     ('/kaggle/input/**/stage5_21m_step58000.pt', 'checkpoints/'),
 ]:
     for f in glob.glob(pattern, recursive=True):
         shutil.copy(f, dest)
         print(f"OK: {f}")
-!cd data/raw && tar -xzf cs_corpus.tar.gz
+!cd data/raw && tar -xzf cs_corpus_clean.tar.gz
+# Sonra klasör adını düzelt (temiz kopya kullanılacak)
+!mv data/raw/cs_corpus data/raw/cs_corpus_old 2>/dev/null || true
+!mv data/raw/cs_corpus_kaggle data/raw/cs_corpus
 ```
 
 ### Hücre 3
