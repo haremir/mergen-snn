@@ -11,7 +11,13 @@ LOCAL_LOG = REPO_DIR / "runs" / "colab_live_train.log"
 LOCAL_LOG.parent.mkdir(parents=True, exist_ok=True)
 
 import sys
-SESSION_NAME = os.environ.get("COLAB_SESSION", sys.argv[1] if len(sys.argv) > 1 else "mergen-t4-v3")
+SESSION_NAME = os.environ.get("COLAB_SESSION", sys.argv[1] if len(sys.argv) > 1 else "mergen-t4-v3-part2")
+log_candidates = [
+    '/content/mergen-snn/runs/stage5_v3_t4_train_part2.log',
+    '/content/mergen-snn/runs/stage5_v3_t4_train.log',
+    '/content/mergen-snn/pipeline_runner_part2.log',
+    '/content/mergen-snn/prep_data.log'
+]
 
 print(f"Colab Monitor & Auto-Sync daemon started for session '{SESSION_NAME}'...")
 
@@ -35,7 +41,7 @@ if ps.stdout.strip():
     train_running = True
 
 log_tail = ''
-for log_candidate in ['/content/mergen-snn/runs/stage5_v3_t4_train.log', '/content/mergen-snn/train.log', '/content/mergen-snn/prep_data.log']:
+for log_candidate in ['/content/mergen-snn/runs/stage5_v3_t4_train_part2.log', '/content/mergen-snn/runs/stage5_v3_t4_train.log', '/content/mergen-snn/pipeline_runner_part2.log', '/content/mergen-snn/prep_data.log']:
     if os.path.exists(log_candidate):
         t = subprocess.run(['tail', '-n', '15', log_candidate], capture_output=True, text=True)
         log_tail = '[' + log_candidate + ']\\n' + t.stdout

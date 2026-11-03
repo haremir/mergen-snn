@@ -2,7 +2,7 @@ import subprocess
 import time
 import sys
 
-SESSION = "mergen-t4-v3"
+SESSION = "mergen-t4-v3-part2"
 print(f"Keep-alive daemon started for session '{SESSION}'...", flush=True)
 
 while True:
