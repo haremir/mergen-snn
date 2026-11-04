@@ -1,6 +1,6 @@
-# Kaggle Stage 6 (Gerçek 50M SNN + 2B Token) Eğitim Rehberi
+# Kaggle Stage 6 (Gerçek 50M SNN — v3 936M Token Tek Oturum) Eğitim Rehberi
 
-Bu rehber, **49.8M parametreli** gerçek Mergen-SNN modelinin ve **2B tokenlık** veri kümesinin (`bpe_train_v3b.bin`) Kaggle GPU (T4 / T4 x2) üzerinde eğitilmesi için gerekli 5 hücreyi içerir.
+Bu rehber, **49.8M parametreli** gerçek Mergen-SNN modelinin dengeli v3 korpusu (**936M token**, tek Kaggle GPU oturumunda tamamlanabilir) ile eğitilmesi için gerekli 5 hücreyi içerir.
 
 ---
 
@@ -15,18 +15,18 @@ if not os.path.exists('/kaggle/working/mergen-snn'):
 %cd /kaggle/working/mergen-snn
 !git pull
 
-# Bağımlılıklar (Kaggle PyTorch'u korunarak snntorch kurulur)
+# Bağımlılıklar (Kaggle PyTorch ortamı korunur)
 !pip install -q snntorch pyyaml rich numpy datasets tokenizers
 !pip install -q -e . --no-deps
 
-# Input'tan 2B tokenlık verileri ve tokenizer'ı kopyala
+# Input'tan v3 (936M token) veri setini ve tokenizer'ı kopyala
 os.makedirs('data/processed', exist_ok=True)
 os.makedirs('checkpoints', exist_ok=True)
 for f in glob.glob('/kaggle/input/**/tokenizer_bpe_v2.json', recursive=True):
     shutil.copy2(f, 'data/processed/')
-for f in glob.glob('/kaggle/input/**/bpe_train_v3b.bin', recursive=True):
+for f in glob.glob('/kaggle/input/**/bpe_train_v3.bin', recursive=True):
     shutil.copy2(f, 'data/processed/')
-for f in glob.glob('/kaggle/input/**/bpe_val_v3b.bin', recursive=True):
+for f in glob.glob('/kaggle/input/**/bpe_val_v3.bin', recursive=True):
     shutil.copy2(f, 'data/processed/')
 
 # Doğrula
@@ -35,16 +35,16 @@ for f in glob.glob('/kaggle/input/**/bpe_val_v3b.bin', recursive=True):
 
 ---
 
-### Hücre 2 — Gerçek 50M Config Oluşturma (1400 Hidden, Beta 0.97, Batch 16)
+### Hücre 2 — Gerçek 50M Config Oluşturma (1400 Hidden, Beta 0.97, Batch 16, v3 Veri)
 ```python
 import yaml, os
 os.makedirs('configs', exist_ok=True)
 cfg = {
     'data': {
         'block_size': 128,
-        'batch_size': 16,        # 1400 hidden VRAM koruması için 16
-        'train_bin': 'data/processed/bpe_train_v3b.bin',
-        'val_bin': 'data/processed/bpe_val_v3b.bin'
+        'batch_size': 16,
+        'train_bin': 'data/processed/bpe_train_v3.bin',  # v3 936M token
+        'val_bin': 'data/processed/bpe_val_v3.bin'
     },
     'model': {
         'vocab_size': 16384,
@@ -70,15 +70,15 @@ cfg = {
 }
 with open('configs/stage6_50m_16k.yaml', 'w') as f:
     yaml.dump(cfg, f, default_flow_style=False)
-print("Gerçek 50M Config hazır: configs/stage6_50m_16k.yaml")
+print("Gerçek 50M (v3) Config hazır: configs/stage6_50m_16k.yaml")
 ```
 
 ---
 
-### Hücre 3 — Tam Epoch Eğitimi Başlatma (Blocking, ~10-12 saat, max_steps_per_epoch=None)
+### Hücre 3 — Eğitimi Başlatma (Tek Oturum, 1 Tam Epoch)
 ```python
 !mkdir -p runs
-# max_steps_per_epoch=None (tam 1 epoch / 2B token)
+# max_steps_per_epoch=None ile tam 1 epoch (936M token) tek oturum eğitimi
 !python scripts/train_lm.py --config configs/stage6_50m_16k.yaml 2>&1 | tee runs/stage6_50m_train.log
 ```
 
@@ -103,8 +103,8 @@ for f in glob.glob('/kaggle/working/output_checkpoints/*.pt'):
 
 ---
 
-### Hücre 5 — Resume (Oturum koptuğunda son checkpoint'ten devam)
+### Hücre 5 — Resume (Oturum Koptuğunda Kaldığı Yerden Devam)
 ```python
-# Oturum kesintisi sonrası en son checkpoint'ten tam senkronize devam:
+# Oturum kesilirse bu hücreyi çalıştırarak son adımdan devam edin:
 !python scripts/train_lm.py --config configs/stage6_50m_16k.yaml --resume auto 2>&1 | tee -a runs/stage6_50m_train.log
 ```

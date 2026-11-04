@@ -1,15 +1,15 @@
 data:
   block_size: 128
-  batch_size: 16        # 32 -> 16 (1400 hidden VRAM'i zorlar)
-  train_bin: data/processed/bpe_train_v3b.bin
-  val_bin: data/processed/bpe_val_v3b.bin
+  batch_size: 16
+  train_bin: data/processed/bpe_train_v3.bin
+  val_bin: data/processed/bpe_val_v3.bin
 
 model:
   vocab_size: 16384
-  embed_dim: 1400       # 768 -> 1400
-  hidden_size: 1400     # 768 -> 1400
+  embed_dim: 1400
+  hidden_size: 1400
   num_steps: 32
-  beta: 0.97            # 0.95 -> 0.97 (spike oranını %50 civarında tut)
+  beta: 0.97
   threshold: 1.0
   tie_weights: false
   use_cython: false
