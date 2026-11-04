@@ -1,20 +1,22 @@
-"""Mergen-SNN — Massive Binary Veri Üretimi v3 (Dengeli Karışım, Disk Dostu).
+"""Mergen-SNN — Massive Binary Veri Üretimi v3b (2B Token, Disk Dostu Streaming).
 
 Ham veriyi diske kaydetmeden doğrudan streaming kaynaklardan okur,
 yeni 16K BPE tokenizer ile encode eder ve doğrudan uint16 binary dosyalara (append) yazar.
-Yeni Oranlar:
-- %55 Kod (The Stack / codeparrot, ~594M token)
-- %15 Türkçe Wikipedia (CulturaX / wikimedia, ~162M token)
-- %15 FineWeb (~162M token)
-- %10 ML-ArXiv / S2ORC (~108M token)
-- %5 Mevcut Korpus (.txt, ~54M token)
-Toplam: 1.080.000.000 Token (~1.08B), %98 Train (bpe_train_v3.bin), %2 Val (bpe_val_v3.bin).
+Kotalar:
+- %45 Kod (The Stack / codeparrot, ~920M token / 3.0 GB)
+- %30 FineWeb (~610M token / 2.0 GB)
+- %16 Türkçe Wikipedia (CulturaX / wikimedia, ~330M token / 1.0 GB)
+- %7.5 ML-ArXiv / S2ORC (~150M token / 0.5 GB)
+- %2 Mevcut Korpus (.txt, ~40M token / 0.12 GB)
+Toplam: ~2.05 Milyar Token (~2B), %98 Train (bpe_train_v3b.bin), %2 Val (bpe_val_v3b.bin).
 """
 
+import argparse
 import gc
 import os
 from pathlib import Path
 import random
+import shutil
 import sys
 import time
 from typing import Dict
@@ -40,31 +42,65 @@ logger = get_logger("mergen.prepare_bpe_data_massive")
 
 OUT_DIR = Path("data/processed")
 TOKENIZER_PATH = OUT_DIR / "tokenizer_bpe_v2.json"
-TRAIN_BIN = OUT_DIR / "bpe_train_v3.bin"
-VAL_BIN = OUT_DIR / "bpe_val_v3.bin"
+TRAIN_BIN = OUT_DIR / "bpe_train_v3b.bin"
+VAL_BIN = OUT_DIR / "bpe_val_v3b.bin"
 
-# 1.08B Token Hedef Kotaları
+# 2.05B Token Hedef Kotaları
 TARGET_TOKEN_QUOTAS = DEFAULT_TOKEN_QUOTAS.copy()
-TOTAL_TARGET_TOKENS = sum(TARGET_TOKEN_QUOTAS.values())  # 1,080,000,000
+TOTAL_TARGET_TOKENS = sum(TARGET_TOKEN_QUOTAS.values())  # 2,050,000,000
+
+
+def check_disk_space(required_gb: float = 15.0, target_path: Path = OUT_DIR) -> float:
+    """Disk boş alanını kontrol et. 15 GB altındaysa durdur ve uyarı ver."""
+    target_path.mkdir(parents=True, exist_ok=True)
+    total, used, free = shutil.disk_usage(target_path)
+    free_gb = free / (1024 ** 3)
+    logger.info(f"Disk Alanı Kontrolü: {free_gb:.2f} GB boş alan mevcut (Gereken asgari: {required_gb:.1f} GB)")
+    if free_gb < required_gb:
+        logger.error(
+            f"❌ KRİTİK HATA: Yetersiz disk alanı! Mevcut: {free_gb:.2f} GB < Gereken: {required_gb:.1f} GB. "
+            "İşlem disk taşması riskini önlemek için durduruluyor!"
+        )
+        sys.exit(1)
+    return free_gb
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Massive BPE Data Preparation v3b (2B Tokens)")
+    parser.add_argument("--train-out", type=str, default=str(TRAIN_BIN), help="Train binary output path")
+    parser.add_argument("--val-out", type=str, default=str(VAL_BIN), help="Val binary output path")
+    parser.add_argument("--tokenizer", type=str, default=str(TOKENIZER_PATH), help="Tokenizer path")
+    parser.add_argument("--min-disk-gb", type=float, default=15.0, help="Minimum free disk space in GB required")
+    parser.add_argument("--max-tokens", type=int, default=None, help="Optional max token limit for testing")
+    args = parser.parse_args()
+
+    train_out_path = Path(args.train_out)
+    val_out_path = Path(args.val_out)
+    tok_path = Path(args.tokenizer)
+
+    # 1. Disk Kontrolü (İş 5)
+    init_free_gb = check_disk_space(required_gb=args.min_disk_gb, target_path=train_out_path.parent)
+
+    total_target = args.max_tokens or TOTAL_TARGET_TOKENS
+
     logger.info("==========================================")
-    logger.info("Mergen-SNN — Massive Binary Veri Hazırlama v3 (Dengeli Karışım)")
+    logger.info("Mergen-SNN — Massive Binary Veri Hazırlama v3b (2B Token Hedefi)")
     logger.info("==========================================")
-    logger.info("Hedef Oranlar:")
+    logger.info("Hedef Kotalar:")
     for src, tok in TARGET_TOKEN_QUOTAS.items():
         pct = (tok / TOTAL_TARGET_TOKENS) * 100
-        logger.info(f" - {src:<20}: {tok:,} token (%{pct:.1f})")
-    logger.info(f"Toplam Hedef Token Sayısı: {TOTAL_TARGET_TOKENS:,} (~1.08B)")
+        gb = DEFAULT_BYTE_QUOTAS.get(src, 0) / (1024 ** 3)
+        logger.info(f" - {src:<20}: {tok:,} token (%{pct:.1f}) | {gb:.2f} GB metin kotası")
+    logger.info(f"Toplam Hedef Token Sayısı: {total_target:,} (~{total_target/1e9:.2f}B)")
+    logger.info(f"Çıktı Dosyaları: {train_out_path} ve {val_out_path}")
     logger.info("==========================================")
 
-    if not TOKENIZER_PATH.exists():
-        logger.error(f"Tokenizer bulunamadı: {TOKENIZER_PATH}!")
+    if not tok_path.exists():
+        logger.error(f"Tokenizer bulunamadı: {tok_path}!")
         sys.exit(1)
 
-    logger.info(f"Tokenizer yükleniyor: {TOKENIZER_PATH}")
-    tokenizer = Tokenizer.from_file(str(TOKENIZER_PATH))
+    logger.info(f"Tokenizer yükleniyor: {tok_path}")
+    tokenizer = Tokenizer.from_file(str(tok_path))
     vocab_size = tokenizer.get_vocab_size()
     logger.info(f"Yüklenen Tokenizer Vocab Boyutu: {vocab_size:,}")
 
@@ -82,10 +118,9 @@ def main():
     total_bytes = 0
 
     t_start = time.time()
-    t_last_log = t_start
 
     # Binary dosyaları sıfırdan aç
-    with open(TRAIN_BIN, "wb") as f_train, open(VAL_BIN, "wb") as f_val:
+    with open(train_out_path, "wb") as f_train, open(val_out_path, "wb") as f_val:
         train_buffer = []
         val_buffer = []
         buffer_token_count = 0
@@ -138,9 +173,9 @@ def main():
                 buffer_token_count += doc_len
 
         for src, text in stream_all_sources(interleave=False):
-            # Eğer tüm kotalar dolduysa sonlandır
+            # Eğer toplam hedefe ulaşıldıysa sonlandır
             total_current = total_train_tokens + total_val_tokens
-            if total_current >= TOTAL_TARGET_TOKENS:
+            if total_current >= total_target:
                 break
 
             # Kaynağın kotası dolmuşsa pas geç
@@ -175,11 +210,11 @@ def main():
                 tok_per_sec = total_tok / max(elapsed, 0.1)
                 mb_text = total_bytes / (1024 * 1024)
                 mb_bin = (total_tok * 2) / (1024 * 1024)
-                pct = (total_tok / TOTAL_TARGET_TOKENS) * 100
+                pct = (total_tok / total_target) * 100
 
                 logger.info(
                     f"[{src}] {total_docs:,} doküman | Metin: {mb_text:.1f} MB | "
-                    f"Token: {total_tok:,} / {TOTAL_TARGET_TOKENS:,} (%{pct:.1f}) | "
+                    f"Token: {total_tok:,} / {total_target:,} (%{pct:.1f}) | "
                     f"Binary: {mb_bin:.1f} MB | Hız: {tok_per_sec:,.0f} tok/s"
                 )
                 gc.collect()
@@ -204,24 +239,25 @@ def main():
 
     total_time = time.time() - t_start
     total_tokens = total_train_tokens + total_val_tokens
-    train_size_mb = TRAIN_BIN.stat().st_size / (1024 * 1024) if TRAIN_BIN.exists() else 0
-    val_size_mb = VAL_BIN.stat().st_size / (1024 * 1024) if VAL_BIN.exists() else 0
+    train_size_mb = train_out_path.stat().st_size / (1024 * 1024) if train_out_path.exists() else 0
+    val_size_mb = val_out_path.stat().st_size / (1024 * 1024) if val_out_path.exists() else 0
+    final_free_gb = shutil.disk_usage(train_out_path.parent).free / (1024 ** 3)
 
     logger.info("\n" + "=" * 60)
-    logger.info("MASSIVE STREAMING BINARY HAZIRLAMA v3 TAMAMLANDI!")
+    logger.info("MASSIVE STREAMING BINARY HAZIRLAMA v3b (2B TOKEN) TAMAMLANDI!")
     logger.info("=" * 60)
     for src, st in source_stats.items():
         src_mb = st["bytes"] / (1024 * 1024)
         src_tok = st["tokens"]
-        target_tok = TARGET_TOKEN_QUOTAS.get(src, 1)
-        logger.info(f"  {src:<22}: {st['docs']:>8,} doküman | {src_mb:>8.2f} MB | {src_tok:>11,} token (%{src_tok/total_tokens*100:.1f})")
+        logger.info(f"  {src:<22}: {st['docs']:>8,} doküman | {src_mb:>8.2f} MB | {src_tok:>11,} token (%{src_tok/max(total_tokens,1)*100:.1f})")
 
     logger.info("-" * 60)
     logger.info(f"Toplam Metin Boyutu : {total_bytes / (1024*1024*1024):.2f} GB ({total_bytes / (1024*1024):.1f} MB)")
     logger.info(f"Toplam Doküman Sayısı: {total_docs:,}")
-    logger.info(f"Train Tokens         : {total_train_tokens:,} ({train_size_mb:.2f} MB -> {TRAIN_BIN})")
-    logger.info(f"Val Tokens           : {total_val_tokens:,} ({val_size_mb:.2f} MB -> {VAL_BIN})")
-    logger.info(f"Toplam Token Sayısı  : {total_tokens:,} (~{total_tokens/1e6:.2f}M token)")
+    logger.info(f"Train Tokens         : {total_train_tokens:,} ({train_size_mb:.2f} MB -> {train_out_path})")
+    logger.info(f"Val Tokens           : {total_val_tokens:,} ({val_size_mb:.2f} MB -> {val_out_path})")
+    logger.info(f"Toplam Token Sayısı  : {total_tokens:,} (~{total_tokens/1e9:.2f}B token)")
+    logger.info(f"Disk Kullanım Özeti  : Başlangıç: {init_free_gb:.2f} GB boş -> Bitiş: {final_free_gb:.2f} GB boş (Kullanılan: {init_free_gb - final_free_gb:.2f} GB)")
     logger.info(f"Toplam Geçen Süre    : {total_time:.1f} saniye ({total_time/60:.1f} dakika)")
     logger.info(f"Ortalama Verim       : {total_tokens / max(total_time, 0.1):,.0f} token/saniye")
 

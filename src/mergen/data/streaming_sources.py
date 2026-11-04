@@ -33,22 +33,22 @@ LIGATURE_MAP = {
     "\u00e6": "ae",
 }
 
-# 1.08B Token Hedef Kotaları
+# 2.05B Token Hedef Kotaları (~6.62 GB Metin)
 DEFAULT_TOKEN_QUOTAS = {
-    "The Stack / Code": 594_000_000,   # %55
-    "CulturaX / TR": 162_000_000,      # %15
-    "FineWeb": 162_000_000,            # %15
-    "S2ORC / ArXiv": 108_000_000,      # %10
-    "Mevcut Local TXT": 54_000_000,    # %5
+    "The Stack / Code": 920_000_000,   # 3.0 GB (~45%)
+    "CulturaX / TR": 330_000_000,      # 1.0 GB (~16%)
+    "FineWeb": 610_000_000,            # 2.0 GB (~30%)
+    "S2ORC / ArXiv": 150_000_000,      # 0.5 GB (~7.5%)
+    "Mevcut Local TXT": 40_000_000,    # 0.12 GB (~2%)
 }
 
-# Bayt Eşdeğerleri (~3.3 bayt/token)
+# Bayt Eşdeğerleri (3.0 GB Kod, 1.0 GB TR, 2.0 GB FineWeb, 0.5 GB ArXiv, 0.12 GB Local)
 DEFAULT_BYTE_QUOTAS = {
-    "The Stack / Code": int(594_000_000 * 3.5),   # ~2079 MB
-    "CulturaX / TR": int(162_000_000 * 3.0),      # ~486 MB
-    "FineWeb": int(162_000_000 * 3.5),            # ~567 MB
-    "S2ORC / ArXiv": int(108_000_000 * 3.6),      # ~388 MB
-    "Mevcut Local TXT": int(54_000_000 * 3.3),    # ~178 MB
+    "The Stack / Code": int(3.0 * 1024 * 1024 * 1024),   # 3.0 GB
+    "CulturaX / TR": int(1.0 * 1024 * 1024 * 1024),      # 1.0 GB
+    "FineWeb": int(2.0 * 1024 * 1024 * 1024),            # 2.0 GB
+    "S2ORC / ArXiv": int(0.5 * 1024 * 1024 * 1024),      # 0.5 GB
+    "Mevcut Local TXT": int(0.12 * 1024 * 1024 * 1024),  # 0.12 GB
 }
 
 

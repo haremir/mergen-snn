@@ -99,7 +99,7 @@ def main():
         or "50m" in model_name
         or "stage6" in cfg_path_str
         or "50m" in cfg_path_str
-        or cfg.get("model", {}).get("embed_dim") == 768
+        or cfg.get("model", {}).get("embed_dim") in (768, 1400)
     ):
         prefix = "stage6_50m"
         stage_title = "Aşama 6: 50M BPE SNN (Kaggle/GPU)"
