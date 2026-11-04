@@ -1,7 +1,7 @@
 """Mergen-SNN — SFT (Supervised Fine-Tuning) Eğitim Scripti.
 
-Modeli checkpoints/bpe_lm_best.pt üzerinden yükler, yeni özel chat tokenları ile
-genişletir ve data/sft/ altındaki maskelenmiş chat verisi ile eğitir.
+Modeli Stage 5 (veya Stage 4) checkpoint'i üzerinden yükler ve
+data/sft/ altındaki maskelenmiş CS sohbet verisi ile süpervize eğitir.
 """
 
 import argparse
@@ -10,6 +10,10 @@ import os
 from pathlib import Path
 import sys
 import time
+
+repo_root = Path(__file__).resolve().parent.parent
+if str(repo_root / "src") not in sys.path:
+    sys.path.insert(0, str(repo_root / "src"))
 
 import numpy as np
 import torch
@@ -59,29 +63,62 @@ class SFTBinaryDataset(Dataset):
 
 def main():
     parser = argparse.ArgumentParser(description="Mergen-SNN SFT Eğitimi")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/bpe_lm_best.pt", help="Başlangıç checkpoint'i")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Başlangıç checkpoint'i (varsayılan: stage5_21m_best.pt / stage5_21m_final.pt)")
     parser.add_argument("--train_bin", type=str, default="data/sft/sft_train.bin", help="SFT girdi verisi")
     parser.add_argument("--mask_bin", type=str, default="data/sft/sft_mask.bin", help="SFT kayıp maskesi")
     parser.add_argument("--meta_json", type=str, default="data/sft/sft_meta.json", help="SFT meta verisi")
-    parser.add_argument("--out_checkpoint", type=str, default="checkpoints/mergen_sft.pt", help="Kayıt checkpoint'i")
-    parser.add_argument("--epochs", type=int, default=3, help="Epoch sayısı (Varsayılan: 3)")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch boyutu (Varsayılan: 64)")
+    parser.add_argument("--out_checkpoint", type=str, default=None, help="Kayıt checkpoint'i")
+    parser.add_argument("--epochs", type=int, default=5, help="Epoch sayısı (Varsayılan: 5)")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch boyutu (Varsayılan: 16)")
     parser.add_argument("--seq_len", type=int, default=256, help="Dizi uzunluğu (Varsayılan: 256)")
     parser.add_argument("--lr", type=float, default=0.0001, help="Öğrenme oranı (Varsayılan: 0.0001)")
-    parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup adım sayısı (Varsayılan: 100)")
+    parser.add_argument("--warmup_steps", type=int, default=30, help="Warmup adım sayısı (Varsayılan: 30)")
     parser.add_argument("--clip_grad_norm", type=float, default=1.0, help="Gradyan kırpma normu")
-    parser.add_argument("--device", type=str, default="cpu", help="Cihaz (cpu / directml)")
+    parser.add_argument("--device", type=str, default="auto", help="Cihaz (auto / cuda / cpu)")
     args = parser.parse_args()
 
     # OMP ve MKL thread ayarları
     os.environ["OMP_NUM_THREADS"] = "6"
     os.environ["MKL_NUM_THREADS"] = "6"
 
-    device = torch.device(args.device)
+    if args.device == "auto":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(args.device)
+
+    # Checkpoint seçimi
+    if args.checkpoint:
+        ckpt_path = Path(args.checkpoint)
+    else:
+        candidates = [
+            Path("checkpoints/stage5_21m_best.pt"),
+            Path("checkpoints/stage5_21m_final.pt"),
+            Path("checkpoints/bpe_lm_best.pt"),
+        ]
+        ckpt_path = None
+        for c in candidates:
+            if c.exists():
+                ckpt_path = c
+                break
+        if not ckpt_path:
+            ckpt_path = Path("checkpoints/stage5_21m_best.pt")
+
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f"Checkpoint bulunamadı: {ckpt_path}")
+
+    # Çıktı checkpoint'i
+    if args.out_checkpoint:
+        out_path = Path(args.out_checkpoint)
+    else:
+        if "stage5" in ckpt_path.name.lower():
+            out_path = Path("checkpoints/stage5_21m_sft.pt")
+        else:
+            out_path = Path("checkpoints/mergen_sft.pt")
 
     print("=" * 70)
-    print("MERGEN-SNN — AŞAMA 4: SFT (SUPERVISED FINE-TUNING) EĞİTİMİ")
-    print(f"Başlangıç Modeli : {args.checkpoint}")
+    print("MERGEN-SNN — SFT (SUPERVISED FINE-TUNING) EĞİTİMİ")
+    print(f"Başlangıç Modeli : {ckpt_path}")
+    print(f"Hedef Model      : {out_path}")
     print(f"Epoch / Batch    : {args.epochs} Epoch | Batch: {args.batch_size} | Seq: {args.seq_len}")
     print(f"Öğrenme Oranı    : {args.lr} (Warmup: {args.warmup_steps} adım)")
     print(f"Cihaz            : {device}")
@@ -98,35 +135,35 @@ def main():
 
     print(f"Veri Kümesi: {len(dataset)} örnek | {len(loader)} batch/epoch | Toplam {total_steps} adım")
 
-    # 2. Modeli yükle ve genişlet
-    ckpt_path = Path(args.checkpoint)
-    if not ckpt_path.exists():
-        raise FileNotFoundError(f"Checkpoint bulunamadı: {ckpt_path}")
+    # 2. Modeli yükle
+    checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
-    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-
-    old_vocab = checkpoint.get("vocab_size", 8192)
-    embed_dim = checkpoint.get("embed_dim", 384)
-    hidden_size = checkpoint.get("hidden_size", 384)
+    old_vocab = checkpoint.get("vocab_size", 16384 if "stage5" in ckpt_path.name.lower() else 8192)
+    embed_dim = checkpoint.get("embed_dim", 640 if "stage5" in ckpt_path.name.lower() else 384)
+    hidden_size = checkpoint.get("hidden_size", 640 if "stage5" in ckpt_path.name.lower() else 384)
     beta = checkpoint.get("beta", 0.9)
     tie_weights = checkpoint.get("tie_weights", False)
 
-    # Model ilklendirme (eski vocab_size ile)
+    # Model ilklendirme
     model = BpeSNNLM(
         vocab_size=old_vocab,
         embed_dim=embed_dim,
         hidden_size=hidden_size,
         beta=beta,
         tie_weights=tie_weights,
+        use_cython=(device.type == "cpu"),
     )
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
-    # Özel tokenlar için vocab genişletme: 8192 -> 8196
-    new_vocab = 8196
-    print(f"Model token dağarcığı genişletiliyor: {old_vocab} -> {new_vocab}...")
-    model.resize_token_embeddings(new_vocab)
+    if old_vocab >= 16384 or "stage5" in ckpt_path.name.lower():
+        new_vocab = old_vocab
+        print(f"Stage 5 modeli: Tokenizer v2 zaten özel chat tokenlarını içeriyor (Vocab: {new_vocab}).")
+    else:
+        new_vocab = 8196
+        print(f"Model token dağarcığı genişletiliyor: {old_vocab} -> {new_vocab}...")
+        model.resize_token_embeddings(new_vocab)
+
     model = model.to(device)
-
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Toplam Parametre Sayısı: {total_params:,}")
 
@@ -166,7 +203,7 @@ def main():
             y = y.to(device)
             mask = mask.to(device)
 
-            num_steps = x.size(1)  # 255
+            num_steps = x.size(1)  # seq_len - 1
             optimizer.zero_grad()
 
             logits, _, spk2 = model(x, num_steps=num_steps, return_spikes=True)
@@ -204,12 +241,13 @@ def main():
             ppl = math.exp(min(l_val, 20.0))
             bpb = l_val / math.log(2.0)
 
-            print(
-                f"Epoch {epoch}/{args.epochs} | Adım {batch_count}/{len(loader)} (Top {global_step}/{total_steps}) "
-                f"| Loss: {l_val:.4f} | PPL: {ppl:6.2f} | BPB: {bpb:.3f} | Spk2: {spk_ratio*100:4.1f}% "
-                f"| LR: {cur_lr:.6f} | {step_dt:.2f}s/step",
-                flush=True,
-            )
+            if batch_count % 5 == 0 or batch_count == len(loader):
+                print(
+                    f"Epoch {epoch}/{args.epochs} | Adım {batch_count}/{len(loader)} (Top {global_step}/{total_steps}) "
+                    f"| Loss: {l_val:.4f} | PPL: {ppl:6.2f} | BPB: {bpb:.3f} | Spk2: {spk_ratio*100:4.1f}% "
+                    f"| LR: {cur_lr:.6f} | {step_dt:.2f}s/step",
+                    flush=True,
+                )
 
         epoch_loss = running_loss / max(running_tokens, 1)
         epoch_ppl = math.exp(min(epoch_loss, 20.0))
@@ -230,13 +268,13 @@ def main():
     total_duration = time.time() - start_time
 
     # 5. Checkpoint Kaydet
-    out_path = Path(args.out_checkpoint)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    cpu_model_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
 
     save_dict = {
         "epoch": args.epochs,
         "step": global_step,
-        "model_state_dict": model.state_dict(),
+        "model_state_dict": cpu_model_state,
         "optimizer_state_dict": optimizer.state_dict(),
         "train_loss": final_step_loss,
         "epoch_losses": epoch_losses,
