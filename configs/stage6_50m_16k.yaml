@@ -1,0 +1,26 @@
+data:
+  block_size: 128
+  batch_size: 32
+  train_bin: data/processed/bpe_train_v3.bin
+  val_bin: data/processed/bpe_val_v3.bin
+
+model:
+  vocab_size: 16384
+  embed_dim: 768
+  hidden_size: 768
+  num_steps: 32
+  beta: 0.95            # 0.9 -> 0.95 (daha uzun membran hafızası, spike oranı artar)
+  threshold: 1.0
+  tie_weights: false
+  use_cython: false
+
+training:
+  epochs: 1
+  learning_rate: 0.0003
+  optimizer: adam
+  warmup_steps: 500      # 1000 -> 500 (nöronlar erken canlanır)
+  clip_grad_norm: 1.0
+  checkpoint_every: 2000
+  resume: auto
+  checkpoint_dir: checkpoints
+  device: cuda

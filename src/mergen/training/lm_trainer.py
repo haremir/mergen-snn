@@ -169,6 +169,17 @@ def train_epoch_lm(
             )
             t_last_log = now
 
+            # Spike Governor (Her 500 adımda spike-sağlık kontrolü)
+            if last_spk2_ratio is not None and (current_step_in_epoch % 500 == 0):
+                if last_spk2_ratio < 0.40:
+                    logger.warning(
+                        f"⚠️ Ölü nöron riski: beta artır (spk2={last_spk2_ratio:.3f} < 0.40)"
+                    )
+                elif last_spk2_ratio > 0.75:
+                    logger.warning(
+                        f"⚠️ Doygunluk: beta düşür (spk2={last_spk2_ratio:.3f} > 0.75)"
+                    )
+
             # Plato kontrolü (patience_steps > 0 ise ve bu süre boyunca iyileşme yoksa erken durdur)
             if patience_steps and patience_steps > 0:
                 if curr_loss < best_loss_window - 1e-4:

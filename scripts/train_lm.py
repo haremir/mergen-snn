@@ -93,7 +93,17 @@ def main():
         or cfg.get("model", {}).get("vocab_size", 0) > 256
     )
     model_name = cfg.get("model", {}).get("name", "")
-    if "stage5" in model_name or "21m" in model_name or cfg.get("model", {}).get("vocab_size") == 16384:
+    cfg_path_str = str(args.config or "")
+    if (
+        "stage6" in model_name
+        or "50m" in model_name
+        or "stage6" in cfg_path_str
+        or "50m" in cfg_path_str
+        or cfg.get("model", {}).get("embed_dim") == 768
+    ):
+        prefix = "stage6_50m"
+        stage_title = "Aşama 6: 50M BPE SNN (Kaggle/GPU)"
+    elif "stage5" in model_name or "21m" in model_name or cfg.get("model", {}).get("vocab_size") == 16384:
         prefix = "stage5_21m"
         stage_title = "Aşama 5: 21M BPE SNN (TPU)"
     elif model_name == "small_snn_lm":

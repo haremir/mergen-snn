@@ -7,7 +7,7 @@ name = "mergen-snn"
 version = "0.1.0"
 description = "Mergen — CPU-friendly, extensible Spiking Neural Network language model focused on Computer Science"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }
 dependencies = [
     "torch==2.4.1",
@@ -22,11 +22,14 @@ dependencies = [
     "beautifulsoup4",
     "lxml",
     "pypdf",
-    "tokenizers",
+    "tokenizers>=0.19.0",
     "cython",
     "setuptools",
-    "gradio>=6.31.0",
-    "datasets>=5.1.0",
+    "gradio<5.0.0",
+    "datasets",
+    "sqlite-vec",
+    "sentence-transformers>=3.0.0,<4.0.0",
+    "transformers>=4.45.0,<5.0.0",
 ]
 
 [project.optional-dependencies]
