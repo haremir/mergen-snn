@@ -371,11 +371,12 @@ class BpeSNNLM(nn.Module):
                 cur2_all, self.lif2.init_leaky(), self.beta, self.threshold
             )
         else:
-            # snnTorch fallback döngüsü
+            # snnTorch fallback döngüsü (membran min=0.0 clamp ile hiperpolarizasyon önlenir)
             mem1 = self.lif1.init_leaky()
             spk1_list = []
             for t in range(num_steps):
                 spk1, mem1 = self.lif1(cur1_all[:, t, :].contiguous(), mem1)
+                mem1 = torch.clamp(mem1, min=0.0)
                 spk1_list.append(spk1)
             spk1_all = torch.stack(spk1_list, dim=1)
 
@@ -384,6 +385,7 @@ class BpeSNNLM(nn.Module):
             spk2_list = []
             for t in range(num_steps):
                 spk2, mem2 = self.lif2(cur2_all[:, t, :].contiguous(), mem2)
+                mem2 = torch.clamp(mem2, min=0.0)
                 spk2_list.append(spk2)
             spk2_all = torch.stack(spk2_list, dim=1)
 

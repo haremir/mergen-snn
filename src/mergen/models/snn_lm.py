@@ -44,8 +44,10 @@ class CharSNNLM(nn.Module):
             x_t = emb[:, t, :]  # (batch, embed_dim) — LIF'e current
             cur1 = self.fc1(x_t)
             spk1, mem1 = self.lif1(cur1, mem1)
+            mem1 = torch.clamp(mem1, min=0.0)
             cur2 = self.fc2(spk1)
             spk2, mem2 = self.lif2(cur2, mem2)
+            mem2 = torch.clamp(mem2, min=0.0)
             logits_t = self.fc_out(spk2)  # (batch, vocab_size)
             logits_list.append(logits_t)
         return torch.stack(logits_list, dim=1)  # (batch, num_steps, vocab_size)

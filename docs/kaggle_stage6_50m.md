@@ -65,7 +65,9 @@ cfg = {
         'checkpoint_every': 2000,
         'resume': 'auto',
         'checkpoint_dir': 'checkpoints',
-        'device': 'cuda'
+        'device': 'cuda',
+        'spike_reg_weight': 1.0,
+        'target_spike': 0.25
     }
 }
 with open('configs/stage6_50m_16k.yaml', 'w') as f:

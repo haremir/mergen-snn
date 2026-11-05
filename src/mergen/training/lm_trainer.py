@@ -52,6 +52,8 @@ def train_epoch_lm(
     best_val_loss: float = float("inf"),
     start_step_in_epoch: int = 0,
     is_bpe: bool = True,
+    spike_reg_weight: float = 0.0,
+    target_spike: float = 0.25,
 ) -> Tuple[float, float, float, float, bool, int]:
     """SNN Dil Modeli için 1 epoch eğitim adımı.
 
@@ -84,12 +86,20 @@ def train_epoch_lm(
             last_spk2_ratio = (spk2 > 0).float().mean().item()
         else:
             logits = model(x, num_steps)
+            spk2 = None
 
         target = y[:, :logits.size(1)] if y.size(1) > logits.size(1) else y
-        loss = F.cross_entropy(
+        ce_loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
             target.reshape(-1),
         )
+
+        if spike_reg_weight > 0 and spk2 is not None:
+            spk2_mean = spk2.mean()
+            spike_reg = spike_reg_weight * ((spk2_mean - target_spike) ** 2)
+            loss = ce_loss + spike_reg
+        else:
+            loss = ce_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -172,13 +182,13 @@ def train_epoch_lm(
 
             # Spike Governor (Her 500 adımda spike-sağlık kontrolü)
             if last_spk2_ratio is not None and (current_step_in_epoch % 500 == 0):
-                if last_spk2_ratio < 0.40:
+                if last_spk2_ratio < 0.15:
                     logger.warning(
-                        f"⚠️ Ölü nöron riski: beta artır (spk2={last_spk2_ratio:.3f} < 0.40)"
+                        f"⚠️ Ölü nöron riski: spk2 çok düşük (spk2={last_spk2_ratio:.3f} < %15)"
                     )
-                elif last_spk2_ratio > 0.75:
+                elif last_spk2_ratio > 0.40:
                     logger.warning(
-                        f"⚠️ Doygunluk: beta düşür (spk2={last_spk2_ratio:.3f} > 0.75)"
+                        f"⚠️ Doygunluk: spk2 çok yüksek (spk2={last_spk2_ratio:.3f} > %40)"
                     )
 
             # Plato kontrolü (patience_steps > 0 ise ve bu süre boyunca iyileşme yoksa erken durdur)

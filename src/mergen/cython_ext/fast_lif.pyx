@@ -41,6 +41,8 @@ def fast_lif_forward(float[:, :] x, float[:, :] mem, float beta, float threshold
             else:
                 spk_view[b, h] = 0.0
                 new_mem_view[b, h] = m
+            if new_mem_view[b, h] < 0.0:
+                new_mem_view[b, h] = 0.0
 
     return spk, new_mem
 
@@ -79,6 +81,8 @@ def fast_lif_sequence_forward(float[:, :, :] x, float[:, :] mem_init, float beta
                 else:
                     spk_view[b, t, h] = 0.0
                     curr_m = m
+                if curr_m < 0.0:
+                    curr_m = 0.0
             mem_out_view[b, h] = curr_m
 
     if return_all_mem:

@@ -32,9 +32,9 @@ def test_cython_fast_lif_forward_kernel():
     assert spk[0, 1] == 1.0
     assert pytest.approx(new_mem[0, 1], 1e-5) == 0.2
 
-    # (1, 0): m = -0.2 <= 1.0 -> spk=0, mem=-0.2
+    # (1, 0): m = -0.2 <= 1.0 -> spk=0, mem=0.0 (clamped min=0.0)
     assert spk[1, 0] == 0.0
-    assert pytest.approx(new_mem[1, 0], 1e-5) == -0.2
+    assert pytest.approx(new_mem[1, 0], 1e-5) == 0.0
 
     # (1, 1): m = 2.0 > 1.0 -> spk=1, mem=1.0
     assert spk[1, 1] == 1.0

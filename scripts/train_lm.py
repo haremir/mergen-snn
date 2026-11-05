@@ -154,6 +154,8 @@ def main():
     chars_per_token = float(cfg.get("training", {}).get("chars_per_token", 3.29 if is_bpe else 1.0))
     optimizer_name = str(cfg.get("training", {}).get("optimizer", "sgd")).lower()
     early_stop_patience = int(cfg.get("training", {}).get("early_stop_patience", 0))
+    spike_reg_weight = float(cfg.get("training", {}).get("spike_reg_weight", 0.0))
+    target_spike = float(cfg.get("training", {}).get("target_spike", 0.25))
 
     max_steps_per_epoch = args.max_steps or cfg.get("training", {}).get("max_steps_per_epoch", None)
     if max_steps_per_epoch is not None:
@@ -264,7 +266,7 @@ def main():
 
     logger.info(f"Cihaz: {dev_name} ({device})")
     logger.info(f"Model: {model.__class__.__name__} | vocab={vocab_size}, embed={embed_dim}, hidden={hidden_size}, beta={beta}, threshold={threshold}")
-    logger.info(f"Eğitim: batch_size={batch_size}, num_steps={num_steps}, epochs={epochs}, lr={lr}")
+    logger.info(f"Eğitim: batch_size={batch_size}, num_steps={num_steps}, epochs={epochs}, lr={lr}, spike_reg={spike_reg_weight}, target_spike={target_spike}")
     logger.info(f"Adım Sınırı (max_steps_per_epoch): {max_steps_per_epoch}")
 
     # Optimizatör: Adam veya SGD
@@ -409,6 +411,8 @@ def main():
             best_val_loss=best_val_loss,
             start_step_in_epoch=current_start_step,
             is_bpe=is_bpe,
+            spike_reg_weight=spike_reg_weight,
+            target_spike=target_spike,
         )
         global_step += steps_done
 

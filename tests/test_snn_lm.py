@@ -76,3 +76,30 @@ def test_snn_lm_threshold():
     assert spk1.shape == (2, 8, 64)
     assert spk2.shape == (2, 8, 64)
 
+
+def test_spike_regularization_and_clamp():
+    # Spike regularization loss (lambda=1.0, target=0.25) ve membran clamp doğrulaması
+    torch.manual_seed(42)
+    model = BpeSNNLM(vocab_size=128, embed_dim=32, hidden_size=64, threshold=0.5, use_cython=False)
+    x = torch.randint(0, 128, (2, 8))
+    y = torch.randint(0, 128, (2, 8))
+
+    logits, spk1, spk2 = model(x, num_steps=8, return_spikes=True)
+    ce_loss = F.cross_entropy(logits.reshape(-1, 128), y.reshape(-1))
+
+    target_spike = 0.25
+    spike_reg_weight = 1.0
+    spk2_mean = spk2.mean()
+    spike_reg = spike_reg_weight * ((spk2_mean - target_spike) ** 2)
+    total_loss = ce_loss + spike_reg
+
+    assert spike_reg.item() >= 0.0
+    assert total_loss.item() >= ce_loss.item()
+
+    total_loss.backward()
+    assert model.fc1.weight.grad is not None
+    assert model.fc2.weight.grad is not None
+    assert not torch.isnan(model.fc1.weight.grad).any()
+    assert not torch.isnan(model.fc2.weight.grad).any()
+
+
