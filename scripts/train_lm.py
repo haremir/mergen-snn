@@ -168,32 +168,88 @@ def main():
     # Tokenizer ve Vocab Boyutu
     if is_bpe:
         from tokenizers import Tokenizer
+        # Tokenizer ve Vocab Boyutu
+        import glob
         tok_cfg = cfg.get("data", {}).get("tokenizer_path")
-        if tok_cfg and Path(tok_cfg).exists():
-            tok_path = Path(tok_cfg)
-        elif (data_dir / "tokenizer_bpe_v2.json").exists():
-            tok_path = data_dir / "tokenizer_bpe_v2.json"
-        else:
-            tok_path = data_dir / "tokenizer_bpe.json"
+        tok_path = None
+        for cand in [
+            tok_cfg,
+            data_dir / "tokenizer_bpe_v2.json",
+            data_dir / "tokenizer_bpe.json",
+        ]:
+            if cand and Path(cand).exists():
+                tok_path = Path(cand)
+                break
+        if tok_path is None:
+            kg_tok = glob.glob("/kaggle/input/**/tokenizer*.json", recursive=True)
+            if kg_tok:
+                tok_path = Path(kg_tok[0])
+                logger.info(f"Tokenizer Kaggle input'tan bulundu: {tok_path}")
+            else:
+                tok_path = Path(tok_cfg) if tok_cfg else (data_dir / "tokenizer_bpe_v2.json")
+
+        if not tok_path.exists():
+            raise FileNotFoundError(
+                f"Tokenizer dosyası bulunamadı! Aranan: '{tok_path}'. "
+                f"Lütfen dosyanın data/processed/ altında veya Kaggle input olarak eklendiğinden emin olun."
+            )
 
         tokenizer = Tokenizer.from_file(str(tok_path))
         vocab_size = int(cfg.get("model", {}).get("vocab_size", tokenizer.get_vocab_size()))
 
+        # Train bin arama
         train_bin_cfg = cfg.get("data", {}).get("train_bin")
-        if train_bin_cfg and Path(train_bin_cfg).exists():
-            train_bin = Path(train_bin_cfg)
-        elif (data_dir / "bpe_train_v2.bin").exists():
-            train_bin = data_dir / "bpe_train_v2.bin"
-        else:
-            train_bin = data_dir / "bpe_train.bin"
+        train_bin = None
+        for cand in [
+            train_bin_cfg,
+            data_dir / "bpe_train_v3.bin",
+            data_dir / "bpe_train_v2.bin",
+            data_dir / "bpe_train.bin",
+        ]:
+            if cand and Path(cand).exists():
+                train_bin = Path(cand)
+                break
+        if train_bin is None:
+            kg_train = glob.glob("/kaggle/input/**/bpe_train*.bin", recursive=True)
+            if kg_train:
+                v3_train = [f for f in kg_train if "v3" in f]
+                train_bin = Path(v3_train[0] if v3_train else kg_train[0])
+                logger.info(f"Eğitim verisi Kaggle input'tan bulundu: {train_bin}")
+            else:
+                train_bin = Path(train_bin_cfg) if train_bin_cfg else (data_dir / "bpe_train_v3.bin")
 
+        if not train_bin.exists():
+            raise FileNotFoundError(
+                f"Eğitim veri dosyası bulunamadı! Aranan: '{train_bin}'. "
+                f"Lütfen Kaggle notebook sağ panelindeki '+ Add Input' butonuna tıklayarak veri setini ekleyin."
+            )
+
+        # Val bin arama
         val_bin_cfg = cfg.get("data", {}).get("val_bin")
-        if val_bin_cfg and Path(val_bin_cfg).exists():
-            val_bin = Path(val_bin_cfg)
-        elif (data_dir / "bpe_val_v2.bin").exists():
-            val_bin = data_dir / "bpe_val_v2.bin"
-        else:
-            val_bin = data_dir / "bpe_val.bin"
+        val_bin = None
+        for cand in [
+            val_bin_cfg,
+            data_dir / "bpe_val_v3.bin",
+            data_dir / "bpe_val_v2.bin",
+            data_dir / "bpe_val.bin",
+        ]:
+            if cand and Path(cand).exists():
+                val_bin = Path(cand)
+                break
+        if val_bin is None:
+            kg_val = glob.glob("/kaggle/input/**/bpe_val*.bin", recursive=True)
+            if kg_val:
+                v3_val = [f for f in kg_val if "v3" in f]
+                val_bin = Path(v3_val[0] if v3_val else kg_val[0])
+                logger.info(f"Doğrulama verisi Kaggle input'tan bulundu: {val_bin}")
+            else:
+                val_bin = Path(val_bin_cfg) if val_bin_cfg else (data_dir / "bpe_val_v3.bin")
+
+        if not val_bin.exists():
+            raise FileNotFoundError(
+                f"Doğrulama veri dosyası bulunamadı! Aranan: '{val_bin}'. "
+                f"Lütfen Kaggle notebook sağ panelindeki '+ Add Input' butonuna tıklayarak veri setini ekleyin."
+            )
     else:
         charset_path = data_dir / "charset.json"
         stoi, _ = load_charset(charset_path)

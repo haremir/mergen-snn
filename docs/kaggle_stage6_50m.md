@@ -4,7 +4,7 @@ Bu rehber, **49.8M parametreli** gerçek Mergen-SNN modelinin dengeli v3 korpusu
 
 ---
 
-### Hücre 1 — Kurulum ve Veri Hazırlığı
+### Hücre 1 — Kurulum ve Veri Hazırlığı (Dirençli Arama & Hızlı Sembolik Bağlantı)
 ```python
 import os, shutil, glob
 from pathlib import Path
@@ -19,17 +19,62 @@ if not os.path.exists('/kaggle/working/mergen-snn'):
 !pip install -q snntorch pyyaml rich numpy datasets tokenizers
 !pip install -q -e . --no-deps
 
-# Input'tan v3 (936M token) veri setini ve tokenizer'ı kopyala
+# Dizinleri hazırla
 os.makedirs('data/processed', exist_ok=True)
 os.makedirs('checkpoints', exist_ok=True)
-for f in glob.glob('/kaggle/input/**/tokenizer_bpe_v2.json', recursive=True):
-    shutil.copy2(f, 'data/processed/')
-for f in glob.glob('/kaggle/input/**/bpe_train_v3.bin', recursive=True):
-    shutil.copy2(f, 'data/processed/')
-for f in glob.glob('/kaggle/input/**/bpe_val_v3.bin', recursive=True):
-    shutil.copy2(f, 'data/processed/')
+
+# /kaggle/input taraması
+print("--- /kaggle/input Taraması ---")
+train_files = glob.glob('/kaggle/input/**/bpe_train*.bin', recursive=True)
+val_files = glob.glob('/kaggle/input/**/bpe_val*.bin', recursive=True)
+tok_files = glob.glob('/kaggle/input/**/tokenizer*.json', recursive=True)
+
+print(f"Bulunan train dosyaları: {train_files}")
+print(f"Bulunan val dosyaları: {val_files}")
+print(f"Bulunan tokenizer dosyaları: {tok_files}")
+
+if not train_files:
+    print("\n❌ DİKKAT: /kaggle/input altında hiçbir bpe_train*.bin bulunamadı!")
+    print("👉 Kaggle notebook sağ panelindeki '+ Add Input' butonuna tıklayarak veri setini ekleyin.")
+    print("Mevcut /kaggle/input içeriği:")
+    !ls -la /kaggle/input/
+else:
+    # Train dosyasını bağla / kopyala
+    v3_train = [f for f in train_files if 'v3' in f]
+    chosen_train = v3_train[0] if v3_train else train_files[0]
+    dst_train = 'data/processed/bpe_train_v3.bin'
+    if not os.path.exists(dst_train):
+        try:
+            os.symlink(chosen_train, dst_train)
+            print(f"✔ Sembolik bağlandı (hızlı & sıfır disk alanı): {chosen_train} -> {dst_train}")
+        except Exception:
+            shutil.copy2(chosen_train, dst_train)
+            print(f"✔ Kopyalandı: {chosen_train} -> {dst_train}")
+
+    # Val dosyasını bağla / kopyala
+    if val_files:
+        v3_val = [f for f in val_files if 'v3' in f]
+        chosen_val = v3_val[0] if v3_val else val_files[0]
+        dst_val = 'data/processed/bpe_val_v3.bin'
+        if not os.path.exists(dst_val):
+            try:
+                os.symlink(chosen_val, dst_val)
+                print(f"✔ Sembolik bağlandı: {chosen_val} -> {dst_val}")
+            except Exception:
+                shutil.copy2(chosen_val, dst_val)
+                print(f"✔ Kopyalandı: {chosen_val} -> {dst_val}")
+
+    # Tokenizer dosyasını kopyala
+    if tok_files:
+        v2_tok = [f for f in tok_files if 'v2' in f]
+        chosen_tok = v2_tok[0] if v2_tok else tok_files[0]
+        dst_tok = 'data/processed/tokenizer_bpe_v2.json'
+        if not os.path.exists(dst_tok):
+            shutil.copy2(chosen_tok, dst_tok)
+            print(f"✔ Kopyalandı: {chosen_tok} -> {dst_tok}")
 
 # Doğrula
+print("\n--- data/processed/ Durumu ---")
 !ls -lh data/processed/
 ```
 
