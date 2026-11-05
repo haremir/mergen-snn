@@ -142,7 +142,7 @@ def main():
     embed_dim = int(cfg.get("model", {}).get("embed_dim", 512 if is_bpe else 128))
     hidden_size = int(cfg.get("model", {}).get("hidden_size", 1024 if is_bpe else 256))
     beta = float(cfg.get("model", {}).get("beta", 0.9))
-    threshold = float(cfg.get("model", {}).get("threshold", 1.0))
+    threshold = float(cfg.get("model", {}).get("threshold", 0.5))
     num_steps = int(cfg.get("model", {}).get("num_steps", block_size))
 
     epochs = int(cfg.get("training", {}).get("epochs", 3 if is_bpe else 2))
