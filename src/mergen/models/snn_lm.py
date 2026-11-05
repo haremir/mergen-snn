@@ -18,16 +18,19 @@ class CharSNNLM(nn.Module):
         embed_dim: int = 128,
         hidden_size: int = 256,
         beta: float = 0.9,
+        threshold: float = 1.0,
     ):
         super().__init__()
         self.vocab_size = vocab_size
         self.embed_dim = embed_dim
         self.hidden_size = hidden_size
+        self.beta = beta
+        self.threshold = threshold
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.fc1 = nn.Linear(embed_dim, hidden_size)
-        self.lif1 = snn.Leaky(beta=beta)
+        self.lif1 = snn.Leaky(beta=beta, threshold=threshold)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.lif2 = snn.Leaky(beta=beta)
+        self.lif2 = snn.Leaky(beta=beta, threshold=threshold)
         self.fc_out = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, input_ids: torch.Tensor, num_steps: int = 32) -> torch.Tensor:

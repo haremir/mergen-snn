@@ -27,6 +27,7 @@ def calculate_parameters(config_path: str = "configs/stage6_50m_16k.yaml"):
     embed_dim = mcfg.get("embed_dim", 1400)
     hidden_size = mcfg.get("hidden_size", 1400)
     beta = mcfg.get("beta", 0.97)
+    threshold = mcfg.get("threshold", 0.5)
     tie_weights = mcfg.get("tie_weights", False)
     use_cython = mcfg.get("use_cython", False)
 
@@ -37,6 +38,7 @@ def calculate_parameters(config_path: str = "configs/stage6_50m_16k.yaml"):
     print(f"Embed Dim    : {embed_dim}")
     print(f"Hidden Size  : {hidden_size}")
     print(f"Beta         : {beta}")
+    print(f"Threshold    : {threshold}")
     print(f"Tie Weights  : {tie_weights}")
     print("------------------------------------------------------------------")
 
@@ -45,6 +47,7 @@ def calculate_parameters(config_path: str = "configs/stage6_50m_16k.yaml"):
         embed_dim=embed_dim,
         hidden_size=hidden_size,
         beta=beta,
+        threshold=threshold,
         tie_weights=tie_weights,
         use_cython=use_cython,
     )

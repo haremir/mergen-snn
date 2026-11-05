@@ -52,7 +52,7 @@ cfg = {
         'hidden_size': 1400,
         'num_steps': 32,
         'beta': 0.97,            # Spike oranını %50 civarında tutar
-        'threshold': 1.0,
+        'threshold': 0.5,        # Ölü nöronları önler (spk2 %40-60 hedef)
         'tie_weights': False,
         'use_cython': False
     },

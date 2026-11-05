@@ -142,6 +142,7 @@ def main():
     embed_dim = int(cfg.get("model", {}).get("embed_dim", 512 if is_bpe else 128))
     hidden_size = int(cfg.get("model", {}).get("hidden_size", 1024 if is_bpe else 256))
     beta = float(cfg.get("model", {}).get("beta", 0.9))
+    threshold = float(cfg.get("model", {}).get("threshold", 1.0))
     num_steps = int(cfg.get("model", {}).get("num_steps", block_size))
 
     epochs = int(cfg.get("training", {}).get("epochs", 3 if is_bpe else 2))
@@ -234,6 +235,7 @@ def main():
             embed_dim=embed_dim,
             hidden_size=hidden_size,
             beta=beta,
+            threshold=threshold,
             tie_weights=tie_weights,
             use_cython=use_cython,
         ).to(device)
@@ -243,6 +245,7 @@ def main():
             embed_dim=embed_dim,
             hidden_size=hidden_size,
             beta=beta,
+            threshold=threshold,
         ).to(device)
 
     # Parametre dökümü
@@ -260,7 +263,7 @@ def main():
     print(f"Toplam Parametre Sayısı: {total_params:,}\n")
 
     logger.info(f"Cihaz: {dev_name} ({device})")
-    logger.info(f"Model: {model.__class__.__name__} | vocab={vocab_size}, embed={embed_dim}, hidden={hidden_size}")
+    logger.info(f"Model: {model.__class__.__name__} | vocab={vocab_size}, embed={embed_dim}, hidden={hidden_size}, beta={beta}, threshold={threshold}")
     logger.info(f"Eğitim: batch_size={batch_size}, num_steps={num_steps}, epochs={epochs}, lr={lr}")
     logger.info(f"Adım Sınırı (max_steps_per_epoch): {max_steps_per_epoch}")
 
@@ -452,6 +455,7 @@ def main():
             "embed_dim": embed_dim,
             "hidden_size": hidden_size,
             "beta": beta,
+            "threshold": threshold,
             "is_bpe": is_bpe,
             "tie_weights": getattr(model, "tie_weights", False),
         }
@@ -482,6 +486,7 @@ def main():
             "embed_dim": embed_dim,
             "hidden_size": hidden_size,
             "beta": beta,
+            "threshold": threshold,
             "is_bpe": is_bpe,
         },
         final_ckpt_path,

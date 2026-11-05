@@ -61,3 +61,18 @@ def test_bpe_snn_lm_weight_tying():
     assert model.embedding.weight.grad is not None
     assert model.fc_out.weight.grad is not None
     assert model.embedding.weight.grad is model.fc_out.weight.grad
+
+
+def test_snn_lm_threshold():
+    # threshold 0.5 ile lif katmanlarının threshold parametresi doğrulanmalı
+    model = BpeSNNLM(vocab_size=128, embed_dim=32, hidden_size=64, threshold=0.5, use_cython=False)
+    assert model.threshold == 0.5
+    assert float(model.lif1.threshold) == 0.5
+    assert float(model.lif2.threshold) == 0.5
+
+    x = torch.randint(0, 128, (2, 8))
+    logits, spk1, spk2 = model(x, num_steps=8, return_spikes=True)
+    assert logits.shape == (2, 8, 128)
+    assert spk1.shape == (2, 8, 64)
+    assert spk2.shape == (2, 8, 64)
+

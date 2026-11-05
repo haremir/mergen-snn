@@ -10,7 +10,7 @@ model:
   hidden_size: 1400
   num_steps: 32
   beta: 0.97
-  threshold: 1.0
+  threshold: 0.5
   tie_weights: false
   use_cython: false
 

@@ -131,6 +131,7 @@ def train_epoch_lm(
                     "hidden_size": getattr(model, "hidden_size", None),
                     "tie_weights": getattr(model, "tie_weights", False),
                     "beta": getattr(model, "beta", 0.9),
+                    "threshold": getattr(model, "threshold", 1.0),
                     "is_bpe": is_bpe,
                 },
                 ckpt_path,

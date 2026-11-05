@@ -267,6 +267,7 @@ class BpeSNNLM(nn.Module):
         embed_dim: int = 384,
         hidden_size: int = 384,
         beta: float = 0.9,
+        threshold: float = 1.0,
         use_cython: bool = True,
         use_fast_linear: bool = False,
         tie_weights: bool = True,
@@ -276,6 +277,7 @@ class BpeSNNLM(nn.Module):
         self.embed_dim = embed_dim
         self.hidden_size = hidden_size
         self.beta = beta
+        self.threshold = threshold
         self.use_cython = use_cython and (fast_lif_sequence_forward is not None)
         self.use_fast_linear = False  # PyTorch nn.Linear (MKL/BLAS) Cython'dan 4.59x daha hızlı
         self.tie_weights = tie_weights and (embed_dim == hidden_size)
@@ -284,11 +286,11 @@ class BpeSNNLM(nn.Module):
         self.fc1 = nn.Linear(embed_dim, hidden_size)
 
         if self.use_cython:
-            self.lif1 = FastLeaky(beta=beta)
-            self.lif2 = FastLeaky(beta=beta)
+            self.lif1 = FastLeaky(beta=beta, threshold=threshold)
+            self.lif2 = FastLeaky(beta=beta, threshold=threshold)
         else:
-            self.lif1 = snn.Leaky(beta=beta)
-            self.lif2 = snn.Leaky(beta=beta)
+            self.lif1 = snn.Leaky(beta=beta, threshold=threshold)
+            self.lif2 = snn.Leaky(beta=beta, threshold=threshold)
 
         self.fc2 = nn.Linear(hidden_size, hidden_size)
 
@@ -361,12 +363,12 @@ class BpeSNNLM(nn.Module):
         if self.use_cython:
             # Tek bir Cython çağrısı ile tüm timestep'ler (Python döngüsü yok!)
             spk1_all, _ = FastLIFSequence.apply(
-                cur1_all, self.lif1.init_leaky(), self.beta, 1.0
+                cur1_all, self.lif1.init_leaky(), self.beta, self.threshold
             )
 
             cur2_all = self.fc2(spk1_all)    # (batch, num_steps, hidden)
             spk2_all, _ = FastLIFSequence.apply(
-                cur2_all, self.lif2.init_leaky(), self.beta, 1.0
+                cur2_all, self.lif2.init_leaky(), self.beta, self.threshold
             )
         else:
             # snnTorch fallback döngüsü
