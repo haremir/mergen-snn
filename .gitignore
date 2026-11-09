@@ -8,6 +8,10 @@ __pycache__/
 *.pyd
 src/mergen/cython_ext/*.cpp
 
+# Rust build artifacts
+target/
+src/mergen/rust_ext/target/
+
 # Distribution / packaging
 build/
 dist/

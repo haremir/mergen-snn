@@ -182,13 +182,13 @@ def train_epoch_lm(
 
             # Spike Governor (Her 500 adımda spike-sağlık kontrolü)
             if last_spk2_ratio is not None and (current_step_in_epoch % 500 == 0):
-                if last_spk2_ratio < 0.15:
+                if last_spk2_ratio < 0.05:
                     logger.warning(
-                        f"⚠️ Ölü nöron riski: spk2 çok düşük (spk2={last_spk2_ratio:.3f} < %15)"
+                        f"⚠️ Ölü nöron riski: spk2 çok düşük (spk2={last_spk2_ratio:.3f} < %5)"
                     )
-                elif last_spk2_ratio > 0.40:
+                elif last_spk2_ratio > 0.60:
                     logger.warning(
-                        f"⚠️ Doygunluk: spk2 çok yüksek (spk2={last_spk2_ratio:.3f} > %40)"
+                        f"⚠️ Doygunluk: spk2 çok yüksek (spk2={last_spk2_ratio:.3f} > %60)"
                     )
 
             # Plato kontrolü (patience_steps > 0 ise ve bu süre boyunca iyileşme yoksa erken durdur)

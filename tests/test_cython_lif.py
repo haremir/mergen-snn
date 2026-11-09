@@ -28,17 +28,17 @@ def test_cython_fast_lif_forward_kernel():
     assert spk[0, 0] == 0.0
     assert pytest.approx(new_mem[0, 0], 1e-5) == 0.5
 
-    # (0, 1): m = 1.2 > 1.0 -> spk=1, mem=0.2
+    # (0, 1): m = 1.2 > 1.0 -> spk=1, mem = 1.2 - 0.5 * 1.0 = 0.7 (warm reset)
     assert spk[0, 1] == 1.0
-    assert pytest.approx(new_mem[0, 1], 1e-5) == 0.2
+    assert pytest.approx(new_mem[0, 1], 1e-5) == 0.7
 
-    # (1, 0): m = -0.2 <= 1.0 -> spk=0, mem=0.0 (clamped min=0.0)
+    # (1, 0): m = -0.2 <= 1.0 -> spk=0, mem = -0.2 (clamped min=-0.5)
     assert spk[1, 0] == 0.0
-    assert pytest.approx(new_mem[1, 0], 1e-5) == 0.0
+    assert pytest.approx(new_mem[1, 0], 1e-5) == -0.2
 
-    # (1, 1): m = 2.0 > 1.0 -> spk=1, mem=1.0
+    # (1, 1): m = 2.0 > 1.0 -> spk=1, mem = 2.0 - 0.5 * 1.0 = 1.5 (warm reset)
     assert spk[1, 1] == 1.0
-    assert pytest.approx(new_mem[1, 1], 1e-5) == 1.0
+    assert pytest.approx(new_mem[1, 1], 1e-5) == 1.5
 
 
 def test_fast_leaky_autograd():

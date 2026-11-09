@@ -24,5 +24,6 @@ training:
   resume: auto
   checkpoint_dir: checkpoints
   device: cuda
-  spike_reg_weight: 1.0
-  target_spike: 0.25
+  spike_reg_weight: 10.0
+  target_spike: 0.15
+  max_steps_per_epoch: 380000

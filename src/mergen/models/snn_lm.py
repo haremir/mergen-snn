@@ -28,9 +28,9 @@ class CharSNNLM(nn.Module):
         self.threshold = threshold
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.fc1 = nn.Linear(embed_dim, hidden_size)
-        self.lif1 = snn.Leaky(beta=beta, threshold=threshold)
+        self.lif1 = snn.Leaky(beta=beta, threshold=threshold, reset_mechanism="none")
         self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.lif2 = snn.Leaky(beta=beta, threshold=threshold)
+        self.lif2 = snn.Leaky(beta=beta, threshold=threshold, reset_mechanism="none")
         self.fc_out = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, input_ids: torch.Tensor, num_steps: int = 32) -> torch.Tensor:
@@ -44,10 +44,12 @@ class CharSNNLM(nn.Module):
             x_t = emb[:, t, :]  # (batch, embed_dim) — LIF'e current
             cur1 = self.fc1(x_t)
             spk1, mem1 = self.lif1(cur1, mem1)
-            mem1 = torch.clamp(mem1, min=0.0)
+            mem1 = torch.where(spk1 > 0, mem1 - 0.5 * self.threshold, mem1)
+            mem1 = torch.clamp(mem1, min=-0.5)
             cur2 = self.fc2(spk1)
             spk2, mem2 = self.lif2(cur2, mem2)
-            mem2 = torch.clamp(mem2, min=0.0)
+            mem2 = torch.where(spk2 > 0, mem2 - 0.5 * self.threshold, mem2)
+            mem2 = torch.clamp(mem2, min=-0.5)
             logits_t = self.fc_out(spk2)  # (batch, vocab_size)
             logits_list.append(logits_t)
         return torch.stack(logits_list, dim=1)  # (batch, num_steps, vocab_size)

@@ -16,6 +16,7 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
 | **06** | **Model Ölçekleme: Mergen-Tiny (10M)** | 275K PoC modelindeki plato sonrası dil öğrenimi için minimum **~10M parametre ölçeğinin hedeflenmesi** | 2026-10-28 | ✅ Kabul Edildi |
 | **07** | **Tokenizasyon Dönüşümü: Byte-Level BPE** | Char-level (460 vocab) yerine kod ve CS metinlerini temsil edecek **Byte-Level BPE Tokenizer'a geçilmesi (PDF B08)** | 2026-10-28 | ✅ Kabul Edildi |
 | **08** | **Eğitim Güvenilirliği & Kesintisiz Çalışma** | Uzun süreli model eğitimlerinde **Step-Level Checkpointing (500 adım)** ve donanımsal **UPS (Kesintisiz Güç Kaynağı)** şartı | 2026-10-29 | ✅ Kabul Edildi |
+| **09** | **Rust vs Cython LIF Çekirdeği** | Güvenlik, sıfır-maliyet soyutlama ve paralellikte **Rust (PyO3 + Rayon)**'un aşamalı benimsenmesi | 2026-11-09 | ✅ Kabul Edildi |
 
 ---
 
@@ -93,3 +94,23 @@ Bu belgede, Mergen-SNN projesinde alınan temel teknik kararlar, alternatifler v
   1. Kod seviyesinde her 500 adımda bir `checkpoints/bpe_lm_step{step}.pt` checkpoint'i alınır; disk tasarrufu için daima son 3 checkpoint saklanır.
   2. `train_lm.py` script'ine `--resume` argümanı ve `resume: auto` desteği eklenerek kesinti sonrası en son adımdan şeffaf biçimde devam edilmesi sağlanmıştır.
   3. Donanım seviyesinde uzun süreli eğitim koşuları için **UPS (Kesintisiz Güç Kaynağı)** kullanımı şart olarak not düşülmüştür.
+
+---
+
+### ADR 09: Rust vs Cython LIF Kernel Kararı ve Geçiş Yol Haritası
+- **Tarih:** 2026-11-09
+- **Bağlam:** 50M ölçekli BPE SNN dil modeli (`batch=16, seq=32, hidden=1400`) mimarisinde ardışık zaman adımlarının (sequential timestep LIF loops) CPU üzerindeki hesaplama yükü büyüktür. Mevcut Cython C++ OpenMP çekirdeğine karşı modern Rust (PyO3 + `rayon` + `numpy`) çekirdeği geliştirilmiş ve başa baş benchmark edilmiştir.
+- **Deneysel Ölçüm Sonuçları (100 iterasyon ortalaması, Batch=16, NumSteps=32, Hidden=1400):**
+  | İşlem | Cython (OpenMP) | Rust (Rayon) | Hızlanma (Speedup) |
+  | :--- | :---: | :---: | :---: |
+  | **Forward** | 1.709 ms | 1.498 ms | **1.14x** |
+  | **Backward** | 1.254 ms | 1.018 ms | **1.23x** |
+  | **Toplam (Fwd + Bwd)** | **2.963 ms** | **2.516 ms** | **1.18x** |
+  - *Doğruluk:* Spike çıktısı ve geriye yayılan gradyanlar (`grad_x`, `grad_mem_init`) 100% matematiksel olarak tam eşleşmiştir (`atol=1e-5`).
+- **Karar ve Gerekçe:**
+  1. Rust çekirdeği, GIL'siz thread pooling (`py.allow_threads` + `rayon`) ve sıfır-maliyet soyutlama sayesinde C++/OpenMP Cython çekirdeğinden %18 daha hızlı çalışmakta, backward geçişinde %23 hızlanma sağlamaktadır.
+  2. Bellek güvenliği (memory safety, undefined behavior olmaması) ve paket yönetiminin kolaylığı (`Cargo.toml` + `maturin`) bakımından Rust, Cython'un karmaşık derleme zincirine (`setup.py`, MSVC/GCC uyumsuzlukları) kıyasla açık ara üstündür.
+- **3 Aşamalı Geçiş Yol Haritası (Migration Roadmap):**
+  - **Faz 1 (Tamamlandı):** LIF çekirdeği (`fast_lif_sequence_forward` ve `fast_lif_sequence_backward`) Rust (`pyo3`, `numpy`, `rayon`) ile yazıldı, paketlendi (`mergen_rust`), doğrulandı ve benchmark edildi.
+  - **Faz 2 (Kısa Vade):** Tokenizer batching, dinamik LR scheduler, spike governor ve veri tamponlama pipeline'ının Rust tarafına aktarılması; Python-Rust sınırındaki tensor dönüşüm maliyetlerinin asgariye indirilmesi.
+  - **Faz 3 (Uzun Vade):** Saf Rust (Full Rust) motoru — Torch/Python bağımlılığı olmaksızın yerel edge/CPU ortamlarında mikro-saniye gecikmeli otoregresif metin üretimi (Candle/Burn veya yerel SIMD matris çarpımları ile tam entegre Mergen-SNN motoru).

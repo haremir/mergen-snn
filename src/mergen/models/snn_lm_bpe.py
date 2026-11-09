@@ -289,8 +289,8 @@ class BpeSNNLM(nn.Module):
             self.lif1 = FastLeaky(beta=beta, threshold=threshold)
             self.lif2 = FastLeaky(beta=beta, threshold=threshold)
         else:
-            self.lif1 = snn.Leaky(beta=beta, threshold=threshold)
-            self.lif2 = snn.Leaky(beta=beta, threshold=threshold)
+            self.lif1 = snn.Leaky(beta=beta, threshold=threshold, reset_mechanism="none")
+            self.lif2 = snn.Leaky(beta=beta, threshold=threshold, reset_mechanism="none")
 
         self.fc2 = nn.Linear(hidden_size, hidden_size)
 
@@ -371,12 +371,13 @@ class BpeSNNLM(nn.Module):
                 cur2_all, self.lif2.init_leaky(), self.beta, self.threshold
             )
         else:
-            # snnTorch fallback döngüsü (membran min=0.0 clamp ile hiperpolarizasyon önlenir)
+            # snnTorch fallback döngüsü (membran min=-0.5 clamp ve 0.5*threshold warm reset)
             mem1 = self.lif1.init_leaky()
             spk1_list = []
             for t in range(num_steps):
                 spk1, mem1 = self.lif1(cur1_all[:, t, :].contiguous(), mem1)
-                mem1 = torch.clamp(mem1, min=0.0)
+                mem1 = torch.where(spk1 > 0, mem1 - 0.5 * self.threshold, mem1)
+                mem1 = torch.clamp(mem1, min=-0.5)
                 spk1_list.append(spk1)
             spk1_all = torch.stack(spk1_list, dim=1)
 
@@ -385,7 +386,8 @@ class BpeSNNLM(nn.Module):
             spk2_list = []
             for t in range(num_steps):
                 spk2, mem2 = self.lif2(cur2_all[:, t, :].contiguous(), mem2)
-                mem2 = torch.clamp(mem2, min=0.0)
+                mem2 = torch.where(spk2 > 0, mem2 - 0.5 * self.threshold, mem2)
+                mem2 = torch.clamp(mem2, min=-0.5)
                 spk2_list.append(spk2)
             spk2_all = torch.stack(spk2_list, dim=1)
 
