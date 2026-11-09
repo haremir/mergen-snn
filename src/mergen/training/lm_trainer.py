@@ -81,7 +81,8 @@ def train_epoch_lm(
         x = x.to(device)
         y = y.to(device)  # x: (batch, num_steps), y: (batch, num_steps)
 
-        if hasattr(model, "forward") and "return_spikes" in model.forward.__code__.co_varnames:
+        underlying = getattr(model, "_orig_mod", getattr(model, "module", model))
+        if hasattr(underlying, "forward") and hasattr(underlying.forward, "__code__") and "return_spikes" in underlying.forward.__code__.co_varnames:
             logits, _, spk2 = model(x, num_steps, return_spikes=True)
             last_spk2_ratio = (spk2 > 0).float().mean().item()
         else:

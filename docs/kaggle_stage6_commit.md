@@ -129,6 +129,8 @@ print('\n[OK] Tüm veri dosyaları mevcut ve doğrulanmıştır.')
 ### Hücre 3: Config Dosyasını Hardcoded Yazma ve Assert Doğrulaması
 - Eğitim konfigürasyonunu doğrudan YAML formatında diske yazar ve hemen ardından `assert` ile parametreleri doğrular.
 - **Kritik Hiper-parametreler:**
+  - `data.num_workers: 2`, `data.pin_memory: true` (CPU veri darboğazını önler, DMA bellek aktarımı)
+  - `training.compile: true` (Linux/CUDA üzerinde PyTorch 2.x kernel fusion ile CPU yükünü düşürür)
   - `threshold: 0.5` (Düşük eşik ile nöron aktivasyonu korunur)
   - `beta: 0.97` (Uzun süreli temporal bellek)
   - `spike_reg_weight: 10.0` (Spike oranını hedefte tutan ceza katsayısı)
@@ -144,6 +146,8 @@ config_yaml = """data:
   batch_size: 16
   train_bin: data/processed/bpe_train_v3.bin
   val_bin: data/processed/bpe_val_v3.bin
+  num_workers: 2
+  pin_memory: true
 
 model:
   vocab_size: 16384
@@ -165,6 +169,7 @@ training:
   resume: auto
   checkpoint_dir: checkpoints
   device: cuda
+  compile: true
   spike_reg_weight: 10.0
   target_spike: 0.15
   max_steps_per_epoch: 380000
@@ -178,6 +183,8 @@ with open(config_path, 'w', encoding='utf-8') as f:
 with open(config_path, 'r', encoding='utf-8') as f:
     cfg = yaml.safe_load(f)
 
+assert cfg['data']['num_workers'] == 2, f"num_workers hatası: {cfg['data']['num_workers']}"
+assert cfg['data']['pin_memory'] is True, f"pin_memory hatası: {cfg['data']['pin_memory']}"
 assert cfg['model']['threshold'] == 0.5, f"Threshold hatası: {cfg['model']['threshold']}"
 assert cfg['model']['beta'] == 0.97, f"Beta hatası: {cfg['model']['beta']}"
 assert cfg['training']['spike_reg_weight'] == 10.0, f"Spike reg hatası: {cfg['training']['spike_reg_weight']}"
@@ -185,6 +192,7 @@ assert cfg['training']['target_spike'] == 0.15, f"Target spike hatası: {cfg['tr
 assert cfg['training']['max_steps_per_epoch'] == 380000, f"Max steps hatası: {cfg['training']['max_steps_per_epoch']}"
 
 print('[OK] Config başarıyla yazıldı ve tüm assert testlerinden geçti.')
+print(f"  num_workers: {cfg['data']['num_workers']}, pin_memory: {cfg['data']['pin_memory']}")
 print(f"  threshold: {cfg['model']['threshold']}")
 print(f"  beta: {cfg['model']['beta']}")
 print(f"  spike_reg_weight: {cfg['training']['spike_reg_weight']}")
