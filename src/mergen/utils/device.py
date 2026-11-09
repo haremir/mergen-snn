@@ -38,6 +38,11 @@ def get_device(prefer: str = "auto"):
 
 
 def device_name(device) -> str:
+    if getattr(device, "type", "") == "cuda":
+        try:
+            return f"CUDA ({torch.cuda.get_device_name(device)})"
+        except Exception:
+            return f"CUDA ({device})"
     if getattr(device, "type", "") == "tpu":
         return f"TPU ({device})"
     if getattr(device, "type", "") == "privateuseone":

@@ -137,8 +137,8 @@ def main():
 
     block_size = int(cfg.get("data", {}).get("block_size", 128 if is_bpe else 32))
     batch_size = int(cfg.get("data", {}).get("batch_size", 32))
-    num_workers = int(cfg.get("data", {}).get("num_workers", 2))
-    pin_memory = bool(cfg.get("data", {}).get("pin_memory", True))
+    num_workers = int(cfg.get("data", {}).get("num_workers", 0))
+    pin_memory = bool(cfg.get("data", {}).get("pin_memory", False))
 
     embed_dim = int(cfg.get("model", {}).get("embed_dim", 512 if is_bpe else 128))
     hidden_size = int(cfg.get("model", {}).get("hidden_size", 1024 if is_bpe else 256))
@@ -306,19 +306,6 @@ def main():
             beta=beta,
             threshold=threshold,
         ).to(device)
-
-    # torch.compile optimizasyonu (Kernel launch overhead'ini azaltır)
-    if device.type == "cuda" or bool(cfg.get("training", {}).get("compile", False)):
-        try:
-            import torch
-            if hasattr(torch, "compile"):
-                import torch._dynamo
-                # Desteklenmeyen veya eksik C++ derleyici ortamlarında güvenli eager fallback için:
-                torch._dynamo.config.suppress_errors = True
-                model = torch.compile(model, mode="reduce-overhead")
-                logger.info("torch.compile aktif (mode='reduce-overhead')")
-        except Exception as e:
-            logger.warning(f"torch.compile başarısız: {e}, eager mode")
 
     # Parametre dökümü
     print("\n--- Model Katmanları ve Parametre Sayıları ---")

@@ -3,8 +3,6 @@ data:
   batch_size: 16
   train_bin: data/processed/bpe_train_v3.bin
   val_bin: data/processed/bpe_val_v3.bin
-  num_workers: 2
-  pin_memory: true
 
 model:
   vocab_size: 16384
@@ -26,7 +24,6 @@ training:
   resume: auto
   checkpoint_dir: checkpoints
   device: cuda
-  compile: true
   spike_reg_weight: 10.0
   target_spike: 0.15
   max_steps_per_epoch: 380000
