@@ -15,7 +15,7 @@ model:
   use_cython: false
 
 training:
-  epochs: 1
+  epochs: 8
   learning_rate: 0.0003
   optimizer: adam
   warmup_steps: 500
@@ -26,4 +26,4 @@ training:
   device: cuda
   spike_reg_weight: 20.0
   target_spike: 0.25
-  max_steps_per_epoch: 380000
+  max_steps_per_epoch: null

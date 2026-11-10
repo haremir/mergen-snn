@@ -34,7 +34,7 @@ def main():
             sys.executable, "scripts/prepare_bpe_data_massive.py",
             "--train-out", str(train_bin),
             "--val-out", str(val_bin),
-            "--max-tokens", "50000000"
+            "--max-tokens", "100000000"
         ]
         log(f"Çalıştırılan komut: {' '.join(data_cmd)}")
         with open("runs/data_prep.log", "w", encoding="utf-8") as f_prep:
