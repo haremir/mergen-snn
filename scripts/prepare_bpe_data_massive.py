@@ -72,6 +72,7 @@ def main():
     parser.add_argument("--tokenizer", type=str, default=str(TOKENIZER_PATH), help="Tokenizer path")
     parser.add_argument("--min-disk-gb", type=float, default=15.0, help="Minimum free disk space in GB required")
     parser.add_argument("--max-tokens", type=int, default=None, help="Optional max token limit for testing")
+    parser.add_argument("--interleave", action="store_true", default=True, help="Interleave data sources homogeneously")
     args = parser.parse_args()
 
     train_out_path = Path(args.train_out)
@@ -172,7 +173,7 @@ def main():
                     total_val_tokens += doc_len
                 buffer_token_count += doc_len
 
-        for src, text in stream_all_sources(interleave=False):
+        for src, text in stream_all_sources(interleave=args.interleave):
             # Eğer toplam hedefe ulaşıldıysa sonlandır
             total_current = total_train_tokens + total_val_tokens
             if total_current >= total_target:
