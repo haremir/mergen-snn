@@ -27,14 +27,14 @@ def main():
 
     # Adım 1: Veri Kümesi Kontrolü ve Üretimi
     # En az 200 MB (100M token) veri yoksa üret
-    min_size_bytes = 200 * 1024 * 1024
+    min_size_bytes = 20 * 1024 * 1024
     if not train_bin.exists() or train_bin.stat().st_size < min_size_bytes:
         log(">>> [ADIM 1] bpe_train_v3.bin bulunamadı veya boyutu küçük. Streaming veri üretimi başlatılıyor...")
         data_cmd = [
             sys.executable, "scripts/prepare_bpe_data_massive.py",
             "--train-out", str(train_bin),
             "--val-out", str(val_bin),
-            "--max-tokens", "500000000"
+            "--max-tokens", "50000000"
         ]
         log(f"Çalıştırılan komut: {' '.join(data_cmd)}")
         with open("runs/data_prep.log", "w", encoding="utf-8") as f_prep:
