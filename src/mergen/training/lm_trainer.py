@@ -72,7 +72,10 @@ def train_epoch_lm(
     early_stopped = False
 
     ln2 = math.log(2)
+    last_spk1_ratio = None
     last_spk2_ratio = None
+    last_dead1_pct = 0.0
+    last_dead2_pct = 0.0
 
     for i, (x, y) in enumerate(loader):
         if i < start_step_in_epoch:
@@ -83,11 +86,17 @@ def train_epoch_lm(
 
         underlying = getattr(model, "_orig_mod", getattr(model, "module", model))
         if hasattr(underlying, "forward") and hasattr(underlying.forward, "__code__") and "return_spikes" in underlying.forward.__code__.co_varnames:
-            logits, _, spk2 = model(x, num_steps, return_spikes=True)
+            logits, spk1, spk2 = model(x, num_steps, return_spikes=True)
+            last_spk1_ratio = (spk1 > 0).float().mean().item()
             last_spk2_ratio = (spk2 > 0).float().mean().item()
+            spk1_p = spk1.mean(dim=(0, 1))
+            spk2_p = spk2.mean(dim=(0, 1))
+            last_dead1_pct = (spk1_p < 0.05).float().mean().item() * 100.0
+            last_dead2_pct = (spk2_p < 0.05).float().mean().item() * 100.0
         else:
             logits = model(x, num_steps)
-            spk2 = None
+            spk1, spk2 = None, None
+            spk1_p, spk2_p = None, None
 
         target = y[:, :logits.size(1)] if y.size(1) > logits.size(1) else y
         ce_loss = F.cross_entropy(
@@ -95,10 +104,19 @@ def train_epoch_lm(
             target.reshape(-1),
         )
 
-        if spike_reg_weight > 0 and spk2 is not None:
-            spk2_mean = spk2.mean()
-            spike_reg = spike_reg_weight * ((spk2_mean - target_spike) ** 2)
+        if spike_reg_weight > 0 and spk1 is not None and spk2 is not None:
+            # Per-neuron target penalty (reg1 + reg2)
+            reg1 = ((spk1_p - target_spike) ** 2).mean()
+            reg2 = ((spk2_p - target_spike) ** 2).mean()
+            # Asymmetric dead neuron hinge penalty (uyuyan nöronları < 10% uyandırır)
+            dead_penalty1 = F.relu(0.10 - spk1_p).pow(2).mean() * 50.0
+            dead_penalty2 = F.relu(0.10 - spk2_p).pow(2).mean() * 50.0
+            spike_reg = spike_reg_weight * (reg1 + reg2) + dead_penalty1 + dead_penalty2
             loss = ce_loss + spike_reg
+        elif spike_reg_weight > 0 and spk2 is not None:
+            reg2 = ((spk2_p - target_spike) ** 2).mean()
+            dead_penalty2 = F.relu(0.10 - spk2_p).pow(2).mean() * 50.0
+            loss = ce_loss + spike_reg_weight * reg2 + dead_penalty2
         else:
             loss = ce_loss
 
@@ -173,7 +191,16 @@ def train_epoch_lm(
             curr_bpb = curr_loss / (ln2 * chars_per_token)
             curr_lr = optimizer.param_groups[0]["lr"]
 
-            spk_str = f" | spk2={last_spk2_ratio:.3f}" if last_spk2_ratio is not None else ""
+            if last_spk1_ratio is not None and last_spk2_ratio is not None:
+                spk_str = (
+                    f" | spk1={last_spk1_ratio:.1%}(d:{last_dead1_pct:.1f}%) "
+                    f"spk2={last_spk2_ratio:.1%}(d:{last_dead2_pct:.1f}%)"
+                )
+            elif last_spk2_ratio is not None:
+                spk_str = f" | spk2={last_spk2_ratio:.1%}(d:{last_dead2_pct:.1f}%)"
+            else:
+                spk_str = ""
+
             logger.info(
                 f"Step {current_step_in_epoch}/{total_steps} (Total {global_step}) | "
                 f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | bpb={curr_bpb:.3f} | lr={curr_lr:.6f}{spk_str} | "
@@ -183,13 +210,13 @@ def train_epoch_lm(
 
             # Spike Governor (Her 500 adımda spike-sağlık kontrolü)
             if last_spk2_ratio is not None and (current_step_in_epoch % 500 == 0):
-                if last_spk2_ratio < 0.05:
+                if last_spk2_ratio < 0.12 or last_dead2_pct > 25.0:
                     logger.warning(
-                        f"⚠️ Ölü nöron riski: spk2 çok düşük (spk2={last_spk2_ratio:.3f} < %5)"
+                        f"⚠️ Ölü nöron uyarısı: spk2={last_spk2_ratio:.1%} (ölü nöron oranı: %{last_dead2_pct:.1f})"
                     )
-                elif last_spk2_ratio > 0.60:
+                elif last_spk2_ratio > 0.45:
                     logger.warning(
-                        f"⚠️ Doygunluk: spk2 çok yüksek (spk2={last_spk2_ratio:.3f} > %60)"
+                        f"⚠️ Doygunluk: spk2 çok yüksek (spk2={last_spk2_ratio:.1%} > %45)"
                     )
 
             # Plato kontrolü (patience_steps > 0 ise ve bu süre boyunca iyileşme yoksa erken durdur)

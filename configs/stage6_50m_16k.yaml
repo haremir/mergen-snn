@@ -20,10 +20,10 @@ training:
   optimizer: adam
   warmup_steps: 500
   clip_grad_norm: 1.0
-  checkpoint_every: 2000
+  checkpoint_every: 1000
   resume: auto
   checkpoint_dir: checkpoints
   device: cuda
-  spike_reg_weight: 10.0
-  target_spike: 0.15
+  spike_reg_weight: 20.0
+  target_spike: 0.25
   max_steps_per_epoch: 380000
