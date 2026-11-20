@@ -4,26 +4,48 @@ Colab oturumundaki (mergen-test) eğitim logunu, son checkpoint durumunu,
 spk1/spk2 oranlarını ve ölü nöron yüzdelerini anlık çeker.
 """
 
+import io
 import subprocess
 import sys
 
-def get_colab_status(session_name="mergen-test"):
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+def get_colab_status(session_name="mergen-50m"):
     probe_code = r'''
 import os, glob, subprocess
 
-log_file = "/content/mergen-snn/runs/stage6_50m.log"
-print("=== LOG DURUMU ===")
-if os.path.exists(log_file):
-    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+# 1. Pipeline ve Data Prep Logları
+pipe_log = "/content/mergen-snn/runs/pipeline.log"
+data_log = "/content/mergen-snn/runs/data_prep.log"
+train_log = "/content/mergen-snn/runs/stage6_50m.log"
+
+print("=== PIPELINE DURUMU ===")
+if os.path.exists(pipe_log):
+    with open(pipe_log, "r", encoding="utf-8", errors="replace") as f:
+        print("".join(f.readlines()[-8:]).rstrip())
+else:
+    print("Pipeline log dosyası henüz yok.")
+
+if os.path.exists(data_log):
+    print("\n=== VERI URETIMI (DATA PREP) ===")
+    with open(data_log, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
-    print(f"Toplam Log Satiri: {len(lines)}")
-    print("--- Son 15 Satir ---")
-    for l in lines[-15:]:
+    print(f"Toplam Data Prep Satırı: {len(lines)}")
+    for l in lines[-8:]:
+        print(l.rstrip())
+
+print("\n=== MODEL EGITIMI (STAGE 6 50M) ===")
+if os.path.exists(train_log):
+    with open(train_log, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+    print(f"Toplam Egitim Satiri: {len(lines)}")
+    for l in lines[-12:]:
         print(l.rstrip())
 else:
-    print("Henuz log dosyasi olusmadi.")
+    print("train_lm.py henüz çıktı üretmedi (veri hazırlığı bekleniyor).")
 
-print("\n=== GPU VE PROCESS ===")
+print("\n=== PROCESS & GPU ===")
 try:
     smi = subprocess.check_output(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader"]).decode()
     print(f"GPU: {smi.strip()}")
@@ -31,15 +53,22 @@ except Exception as e:
     print(f"GPU sorgulanamadi: {e}")
 
 try:
-    ps = subprocess.check_output(["pgrep", "-fa", "train_lm.py"]).decode().strip()
-    if ps:
-        print(f"Egitim Sureci Aktif: {ps}")
+    ps = subprocess.check_output(["pgrep", "-fa", "python"]).decode().strip()
+    active_py = [line for line in ps.splitlines() if any(k in line for k in ["pipeline", "prepare", "train_lm"])]
+    if active_py:
+        print("Aktif Python Süreçleri:")
+        for a in active_py:
+            print(f"  * {a}")
     else:
-        print("train_lm.py su anda calismiyor.")
+        print("Mergen ile ilgili aktif Python süreci bulunamadı.")
 except Exception:
-    print("train_lm.py calismiyor.")
+    pass
 
-print("\n=== CHECKPOINT DURUMU ===")
+print("\n=== DISK & CHECKPOINT DURUMU ===")
+for p in ["/content/mergen-snn/data/processed/bpe_train_v3.bin", "/content/mergen-snn/data/processed/bpe_val_v3.bin"]:
+    if os.path.exists(p):
+        print(f"Dosya: {p} ({os.path.getsize(p)/(1024*1024):.2f} MB)")
+
 ckpt_dirs = [
     "/content/drive/MyDrive/mergen-snn/checkpoints",
     "/content/mergen-snn/checkpoints"
