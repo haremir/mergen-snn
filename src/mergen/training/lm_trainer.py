@@ -186,7 +186,7 @@ def train_epoch_lm(
             )
             # Sadece son 3 step checkpoint'ini tut, eskileri sil
             step_files = sorted(
-                Path(checkpoint_dir).glob(f"{checkpoint_prefix}_step[0-9]*.pt"),
+                [f for f in Path(checkpoint_dir).glob(f"{checkpoint_prefix}_step[0-9]*.pt") if not f.stem.endswith("_weights")],
                 key=lambda f: int(f.stem.replace(f"{checkpoint_prefix}_step", ""))
                 if f.stem.replace(f"{checkpoint_prefix}_step", "").isdigit()
                 else 0,

@@ -86,6 +86,16 @@ print(json.dumps({
 def log(msg: str):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
+def _async_download(down_cmd, cname):
+    try:
+        res = subprocess.run(down_cmd, capture_output=True, text=True, timeout=300)
+        if res.returncode == 0:
+            log(f"✅ Checkpoint yerel diske indirildi: {cname}")
+        else:
+            log(f"⚠️ Checkpoint indirme hatasi ({cname}): {res.stderr.strip() or res.stdout.strip()}")
+    except Exception as e:
+        log(f"⚠️ Checkpoint indirme istisnasi ({cname}): {e}")
+
 def main():
     session = sys.argv[1] if len(sys.argv) > 1 else "mergen-50m"
     log(f"Colab Keep-Alive & Metric Daemon başlatıldı (Oturum: {session})...")
@@ -142,12 +152,12 @@ def main():
                     if cname not in seen_ckpts:
                         seen_ckpts.add(cname)
                         log(f"⭐ YENI CHECKPOINT: {cname} ({ckpt['size_mb']:.1f} MB)")
-                        # Hafif ağırlık dosyalarını (~190MB) anında yerel diske indir (arka plan thread)
-                        if "_weights.pt" in cname or "best.pt" in cname or "final.pt" in cname:
+                        # Checkpoint dosyalarını yerel diske indir (arka plan thread)
+                        if "_weights.pt" in cname or "epoch" in cname or "best" in cname or "final" in cname:
                             try:
-                                remote_path = ckpt["path"].lstrip("/")
+                                remote_path = ckpt["path"] if ckpt["path"].startswith("/") else "/" + ckpt["path"]
                                 down_cmd = ["uv", "tool", "run", "colabapi", "raw", "--", "download", "-s", session, remote_path, str(LOCAL_CKPT_DIR / cname)]
-                                threading.Thread(target=subprocess.run, args=(down_cmd,), kwargs={"capture_output": True, "timeout": 180}, daemon=True).start()
+                                threading.Thread(target=_async_download, args=(down_cmd, cname), daemon=True).start()
                                 log(f"📥 Checkpoint arka planda yerel diske indiriliyor: {cname}")
                             except Exception as dl_err:
                                 log(f"İndirme başlatma hatası ({cname}): {dl_err}")
