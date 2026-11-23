@@ -523,6 +523,24 @@ def main():
         torch.save(ckpt_payload, ckpt_path)
         logger.info(f"Checkpoint kaydedildi: {ckpt_path}")
 
+        # Hafifletilmiş ağırlık checkpoint'i (~190MB)
+        epoch_weights_path = checkpoints_dir / f"{prefix}_epoch{epoch + 1}_weights.pt"
+        torch.save({
+            "epoch": epoch + 1,
+            "step": global_step,
+            "model_state_dict": cpu_model_state,
+            "val_loss": val_loss,
+            "best_val_loss": best_val_loss,
+            "vocab_size": vocab_size,
+            "embed_dim": embed_dim,
+            "hidden_size": hidden_size,
+            "beta": beta,
+            "threshold": threshold,
+            "is_bpe": is_bpe,
+            "tie_weights": getattr(model, "tie_weights", False),
+        }, epoch_weights_path)
+        logger.info(f"Hafif ağırlık kaydedildi: {epoch_weights_path}")
+
         if is_best:
             best_val_loss = val_loss
             ckpt_payload["best_val_loss"] = best_val_loss

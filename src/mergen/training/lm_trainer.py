@@ -165,9 +165,28 @@ def train_epoch_lm(
                 },
                 ckpt_path,
             )
+            # Hızlı yerel senkronizasyon için hafif ağırlık checkpoint'i (~190MB)
+            weights_ckpt_path = Path(checkpoint_dir) / f"{checkpoint_prefix}_step{global_step}_weights.pt"
+            torch.save(
+                {
+                    "step": global_step,
+                    "epoch": epoch_idx + 1,
+                    "model_state_dict": cpu_model_state,
+                    "best_val_loss": best_val_loss,
+                    "train_loss": total_loss / max(total_tokens, 1),
+                    "vocab_size": getattr(model, "vocab_size", None),
+                    "embed_dim": getattr(model, "embed_dim", None),
+                    "hidden_size": getattr(model, "hidden_size", None),
+                    "tie_weights": getattr(model, "tie_weights", False),
+                    "beta": getattr(model, "beta", 0.9),
+                    "threshold": getattr(model, "threshold", 1.0),
+                    "is_bpe": is_bpe,
+                },
+                weights_ckpt_path,
+            )
             # Sadece son 3 step checkpoint'ini tut, eskileri sil
             step_files = sorted(
-                Path(checkpoint_dir).glob(f"{checkpoint_prefix}_step*.pt"),
+                Path(checkpoint_dir).glob(f"{checkpoint_prefix}_step[0-9]*.pt"),
                 key=lambda f: int(f.stem.replace(f"{checkpoint_prefix}_step", ""))
                 if f.stem.replace(f"{checkpoint_prefix}_step", "").isdigit()
                 else 0,
@@ -176,6 +195,10 @@ def train_epoch_lm(
                 for old_f in step_files[:-3]:
                     try:
                         old_f.unlink()
+                        # Varsa weights dosyasını da temizle
+                        w_old = Path(checkpoint_dir) / f"{old_f.stem}_weights.pt"
+                        if w_old.exists():
+                            w_old.unlink()
                     except OSError:
                         pass
 

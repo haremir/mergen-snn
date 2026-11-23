@@ -7,11 +7,17 @@
 4. Yeni checkpoint (.pt) üretildikçe yerel 'checkpoints' klasörüne otomatik indirir.
 """
 
+import io
 import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
+
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCAL_CKPT_DIR = PROJECT_ROOT / "checkpoints"
@@ -60,10 +66,10 @@ if os.path.exists("/content/mergen-snn/data/processed/bpe_train_v3.bin"):
     train_bin_sz = os.path.getsize("/content/mergen-snn/data/processed/bpe_train_v3.bin") / (1024 * 1024)
 
 ckpts = []
-for cd in ["/content/drive/MyDrive/mergen-snn/checkpoints", "/content/mergen-snn/checkpoints"]:
-    if os.path.exists(cd):
-        for f in glob.glob(f"{cd}/*.pt"):
-            ckpts.append({"name": os.path.basename(f), "size_mb": os.path.getsize(f) / (1024 * 1024), "path": f})
+cd = "/content/mergen-snn/checkpoints"
+if os.path.exists(cd):
+    for f in glob.glob(f"{cd}/*.pt"):
+        ckpts.append({"name": os.path.basename(f), "size_mb": os.path.getsize(f) / (1024 * 1024), "path": f})
 
 print("---JSON_OUTPUT---")
 print(json.dumps({
@@ -84,8 +90,8 @@ def main():
     session = sys.argv[1] if len(sys.argv) > 1 else "mergen-50m"
     log(f"Colab Keep-Alive & Metric Daemon başlatıldı (Oturum: {session})...")
 
-    known_ckpts = set()
     consecutive_errs = 0
+    seen_ckpts = set()
 
     while True:
         try:
@@ -130,20 +136,21 @@ def main():
                 else:
                     log(f"⏳ [BEKLEMEDE] GPU: {gpu_str} | Aktif Surecler: {proc_str}")
 
-                # Checkpoint kontrolü & indirme
+                # Checkpoint kontrolü & kaydı
                 for ckpt in info.get("ckpts", []):
                     cname = ckpt["name"]
-                    if cname not in known_ckpts:
-                        known_ckpts.add(cname)
-                        log(f"⭐ YENI CHECKPOINT TESPIT EDILDI: {cname} ({ckpt['size_mb']:.1f} MB)")
-                        # Yerel diske indir
-                        try:
-                            remote_path = ckpt["path"].lstrip("/")
-                            down_cmd = ["uv", "tool", "run", "colabapi", "raw", "--", "download", "-s", session, remote_path, str(LOCAL_CKPT_DIR / cname)]
-                            subprocess.run(down_cmd, capture_output=True, timeout=120)
-                            log(f"✔ Checkpoint yerel klasöre yedeklendi: checkpoints/{cname}")
-                        except Exception as e:
-                            log(f"Checkpoint indirme hatası: {e}")
+                    if cname not in seen_ckpts:
+                        seen_ckpts.add(cname)
+                        log(f"⭐ YENI CHECKPOINT: {cname} ({ckpt['size_mb']:.1f} MB)")
+                        # Hafif ağırlık dosyalarını (~190MB) anında yerel diske indir (arka plan thread)
+                        if "_weights.pt" in cname or "best.pt" in cname or "final.pt" in cname:
+                            try:
+                                remote_path = ckpt["path"].lstrip("/")
+                                down_cmd = ["uv", "tool", "run", "colabapi", "raw", "--", "download", "-s", session, remote_path, str(LOCAL_CKPT_DIR / cname)]
+                                threading.Thread(target=subprocess.run, args=(down_cmd,), kwargs={"capture_output": True, "timeout": 180}, daemon=True).start()
+                                log(f"📥 Checkpoint arka planda yerel diske indiriliyor: {cname}")
+                            except Exception as dl_err:
+                                log(f"İndirme başlatma hatası ({cname}): {dl_err}")
             else:
                 consecutive_errs += 1
                 log(f"⚠️ Keep-alive uyarısı ({consecutive_errs}): returncode={res.returncode}")
