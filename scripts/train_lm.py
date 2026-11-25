@@ -94,7 +94,10 @@ def main():
     )
     model_name = cfg.get("model", {}).get("name", "")
     cfg_path_str = str(args.config or "")
-    if (
+    if model_name == "spike_transformer" or "spike_transformer" in cfg_path_str:
+        prefix = "stage7_spike_transformer_10m"
+        stage_title = "Aşama 7: 10M Spike Transformer (Spikformer/SpikeGPT)"
+    elif (
         "stage6" in model_name
         or "50m" in model_name
         or "stage6" in cfg_path_str
@@ -288,7 +291,23 @@ def main():
     if getattr(device, "type", "") in ("tpu", "privateuseone", "cuda"):
         use_cython = False
 
-    if is_bpe:
+    if model_name == "spike_transformer":
+        from mergen.models.spike_transformer import SpikeTransformerLM
+        num_blocks = int(cfg.get("model", {}).get("num_blocks", 4))
+        num_heads = int(cfg.get("model", {}).get("num_heads", 4))
+        ffn_hidden = int(cfg.get("model", {}).get("ffn_hidden", 512))
+        max_seq = int(cfg.get("model", {}).get("max_seq", block_size))
+        model = SpikeTransformerLM(
+            vocab_size=vocab_size,
+            embed_dim=embed_dim,
+            num_blocks=num_blocks,
+            num_heads=num_heads,
+            ffn_hidden=ffn_hidden,
+            max_seq=max_seq,
+            beta=beta,
+            threshold=threshold,
+        ).to(device)
+    elif is_bpe:
         model = BpeSNNLM(
             vocab_size=vocab_size,
             embed_dim=embed_dim,

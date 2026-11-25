@@ -1,0 +1,33 @@
+data:
+  block_size: 128
+  batch_size: 16
+  train_bin: data/processed/bpe_train_v3.bin
+  val_bin: data/processed/bpe_val_v3.bin
+  num_workers: 0
+  pin_memory: false
+
+model:
+  name: spike_transformer
+  vocab_size: 16384
+  embed_dim: 256
+  num_blocks: 4
+  num_heads: 4
+  ffn_hidden: 512
+  max_seq: 128
+  beta: 0.9
+  threshold: 0.5
+
+training:
+  epochs: 1
+  learning_rate: 0.0003
+  optimizer: adam
+  warmup_steps: 500
+  clip_grad_norm: 1.0
+  checkpoint_every: 2000
+  resume: auto
+  checkpoint_dir: checkpoints
+  device: cuda
+  max_steps_per_epoch: 500    # sadece smoke test
+  log_every: 50
+  spike_reg_weight: 0.0       # SSA'da spike doğal, ceza gerekmez
+  target_spike: 0.20

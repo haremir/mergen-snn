@@ -72,6 +72,7 @@ def train_epoch_lm(
     early_stopped = False
 
     ln2 = math.log(2)
+    last_spk_ratio = None
     last_spk1_ratio = None
     last_spk2_ratio = None
     last_dead1_pct = 0.0
@@ -85,7 +86,21 @@ def train_epoch_lm(
         y = y.to(device)  # x: (batch, num_steps), y: (batch, num_steps)
 
         underlying = getattr(model, "_orig_mod", getattr(model, "module", model))
-        if hasattr(underlying, "forward") and hasattr(underlying.forward, "__code__") and "return_spikes" in underlying.forward.__code__.co_varnames:
+        is_spike_transformer = getattr(underlying, "is_spike_transformer", False)
+
+        if is_spike_transformer:
+            out = model(x, num_steps)
+            if isinstance(out, tuple):
+                logits, spk_rate_t = out
+                last_spk_ratio = spk_rate_t.item() if isinstance(spk_rate_t, torch.Tensor) else float(spk_rate_t)
+            else:
+                logits = out
+                last_spk_ratio = getattr(underlying, "last_spk_rate", 0.0)
+                if isinstance(last_spk_ratio, torch.Tensor):
+                    last_spk_ratio = last_spk_ratio.item()
+            spk1, spk2 = None, None
+            spk1_p, spk2_p = None, None
+        elif hasattr(underlying, "forward") and hasattr(underlying.forward, "__code__") and "return_spikes" in underlying.forward.__code__.co_varnames:
             logits, spk1, spk2 = model(x, num_steps, return_spikes=True)
             last_spk1_ratio = (spk1 > 0).float().mean().item()
             last_spk2_ratio = (spk2 > 0).float().mean().item()
@@ -94,7 +109,8 @@ def train_epoch_lm(
             last_dead1_pct = (spk1_p < 0.05).float().mean().item() * 100.0
             last_dead2_pct = (spk2_p < 0.05).float().mean().item() * 100.0
         else:
-            logits = model(x, num_steps)
+            out = model(x, num_steps)
+            logits = out[0] if isinstance(out, tuple) else out
             spk1, spk2 = None, None
             spk1_p, spk2_p = None, None
 
@@ -214,7 +230,9 @@ def train_epoch_lm(
             curr_bpb = curr_loss / (ln2 * chars_per_token)
             curr_lr = optimizer.param_groups[0]["lr"]
 
-            if last_spk1_ratio is not None and last_spk2_ratio is not None:
+            if last_spk_ratio is not None:
+                spk_str = f" | spk={last_spk_ratio:.1%}"
+            elif last_spk1_ratio is not None and last_spk2_ratio is not None:
                 spk_str = (
                     f" | spk1={last_spk1_ratio:.1%}(d:{last_dead1_pct:.1f}%) "
                     f"spk2={last_spk2_ratio:.1%}(d:{last_dead2_pct:.1f}%)"
@@ -291,7 +309,8 @@ def eval_epoch_lm(
             x = x.to(device)
             y = y.to(device)
 
-            logits = model(x, num_steps)
+            out = model(x, num_steps)
+            logits = out[0] if isinstance(out, tuple) else out
             target = y[:, :logits.size(1)] if y.size(1) > logits.size(1) else y
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)),
