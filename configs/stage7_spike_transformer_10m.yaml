@@ -21,13 +21,13 @@ training:
   epochs: 1
   learning_rate: 0.0003
   optimizer: adam
-  warmup_steps: 500
+  warmup_steps: 100
   clip_grad_norm: 1.0
   checkpoint_every: 2000
-  resume: auto
+  resume: false
   checkpoint_dir: checkpoints
   device: cuda
-  max_steps_per_epoch: 500    # sadece smoke test
+  max_steps_per_epoch: 1000    # 1000 adım smoke test
   log_every: 50
   spike_reg_weight: 0.0       # SSA'da spike doğal, ceza gerekmez
   target_spike: 0.20

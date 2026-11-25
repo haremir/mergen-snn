@@ -1,6 +1,7 @@
 """Mergen-SNN — SNN Dil Modeli Eğitim, Değerlendirme ve Planlayıcı Fonksiyonları (Stage 2 & 3)."""
 
 import math
+from collections import deque
 from pathlib import Path
 import time
 from typing import Optional, Tuple
@@ -72,6 +73,7 @@ def train_epoch_lm(
     early_stopped = False
 
     ln2 = math.log(2)
+    recent_losses = deque(maxlen=100)
     last_spk_ratio = None
     last_spk1_ratio = None
     last_spk2_ratio = None
@@ -152,6 +154,7 @@ def train_epoch_lm(
         batch_loss = loss.item()
         total_loss += batch_loss * tokens_in_batch
         total_tokens += tokens_in_batch
+        recent_losses.append(batch_loss)
         step_count += 1
         current_step_in_epoch = start_step_in_epoch + step_count
         global_step = global_step_offset + step_count
@@ -170,7 +173,7 @@ def train_epoch_lm(
                     "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
                     "best_val_loss": best_val_loss,
                     "rng_state": torch.get_rng_state(),
-                    "train_loss": total_loss / max(total_tokens, 1),
+                    "train_loss": (sum(recent_losses) / len(recent_losses)) if recent_losses else (total_loss / max(total_tokens, 1)),
                     "vocab_size": getattr(model, "vocab_size", None),
                     "embed_dim": getattr(model, "embed_dim", None),
                     "hidden_size": getattr(model, "hidden_size", None),
@@ -189,7 +192,7 @@ def train_epoch_lm(
                     "epoch": epoch_idx + 1,
                     "model_state_dict": cpu_model_state,
                     "best_val_loss": best_val_loss,
-                    "train_loss": total_loss / max(total_tokens, 1),
+                    "train_loss": (sum(recent_losses) / len(recent_losses)) if recent_losses else (total_loss / max(total_tokens, 1)),
                     "vocab_size": getattr(model, "vocab_size", None),
                     "embed_dim": getattr(model, "embed_dim", None),
                     "hidden_size": getattr(model, "hidden_size", None),
@@ -226,8 +229,9 @@ def train_epoch_lm(
             steps_per_sec = 1.0 / max(step_duration, 1e-4)
 
             curr_loss = total_loss / max(total_tokens, 1)
-            curr_ppl = math.exp(min(curr_loss, 20.0))
-            curr_bpb = curr_loss / (ln2 * chars_per_token)
+            window_loss = sum(recent_losses) / len(recent_losses) if recent_losses else curr_loss
+            window_ppl = math.exp(min(window_loss, 20.0))
+            window_bpb = window_loss / (ln2 * chars_per_token)
             curr_lr = optimizer.param_groups[0]["lr"]
 
             if last_spk_ratio is not None:
@@ -244,7 +248,7 @@ def train_epoch_lm(
 
             logger.info(
                 f"Step {current_step_in_epoch}/{total_steps} (Total {global_step}) | "
-                f"loss={curr_loss:.4f} | ppl={curr_ppl:.2f} | bpb={curr_bpb:.3f} | lr={curr_lr:.6f}{spk_str} | "
+                f"loss={window_loss:.4f} (cum:{curr_loss:.4f}) | ppl={window_ppl:.2f} | bpb={window_bpb:.3f} | lr={curr_lr:.6f}{spk_str} | "
                 f"{steps_per_sec:.1f}step/s"
             )
             t_last_log = now
@@ -280,9 +284,10 @@ def train_epoch_lm(
 
     elapsed = time.time() - t_start
     avg_step_sec = elapsed / max(step_count, 1)
-    avg_loss = total_loss / max(total_tokens, 1)
-    avg_bpb = avg_loss / (ln2 * chars_per_token)
-    return avg_loss, avg_bpb, elapsed, avg_step_sec, early_stopped, step_count
+    cum_loss = total_loss / max(total_tokens, 1)
+    final_loss = sum(recent_losses) / len(recent_losses) if recent_losses else cum_loss
+    final_bpb = final_loss / (ln2 * chars_per_token)
+    return final_loss, final_bpb, elapsed, avg_step_sec, early_stopped, step_count
 
 
 def eval_epoch_lm(
