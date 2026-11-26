@@ -24,7 +24,7 @@ training:
   learning_rate: 0.0003
   optimizer: adam
   warmup_steps: 500
-  checkpoint_every: 2000
+  checkpoint_every: 1000
   resume: auto
   checkpoint_dir: checkpoints
   device: cuda
