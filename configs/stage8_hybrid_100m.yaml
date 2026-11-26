@@ -1,7 +1,7 @@
 data:
   block_size: 128
   batch_size: 8 # 100M model, VRAM sınırı
-  train_bin: data/processed/bpe_train_v3b.bin # TAM VERİ, 1.84B token
+  train_bin: data/processed/bpe_train_v3c.bin # TAM 2.0B TOKEN VERİSİ
   val_bin: data/processed/bpe_val_v3b.bin
   use_streaming: true # Colab'de disk/RAM tasarrufu için streaming (memmap)
   num_workers: 0
@@ -10,17 +10,17 @@ data:
 model:
   name: hybrid_lif_attn
   vocab_size: 16384
-  embed_dim: 512
-  hidden_size: 512
+  embed_dim: 768 # 100.8M konfigürasyonu
+  hidden_size: 768
   num_blocks: 8
-  num_heads: 8
-  ffn_hidden: 1024
+  num_heads: 12 # head_dim = 64 (768 / 12)
+  ffn_hidden: 3072 # 4x embed_dim genişletme
   max_seq: 128
   beta: 0.9
   threshold: 0.5
 
 training:
-  epochs: 1 # Önce 1 epoch (1.8M adım). PPL < 500 ise 2. epoch.
+  epochs: 1 # 1 epoch = ~1.95M adım (2B token). PPL < 600 ise devam.
   learning_rate: 0.0003
   optimizer: adam
   warmup_steps: 500
@@ -31,5 +31,5 @@ training:
   max_steps_per_epoch: null
   log_every: 100
   clip_grad_norm: 1.0
-  spike_reg_weight: 0.0 # V spike doğal, ceza gerekmez
+  spike_reg_weight: 0.0
   target_spike: 0.20
