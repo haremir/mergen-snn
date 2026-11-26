@@ -10,6 +10,7 @@ model:
   name: spike_transformer
   vocab_size: 16384
   embed_dim: 256
+  hidden_size: 256
   num_blocks: 4
   num_heads: 4
   ffn_hidden: 512

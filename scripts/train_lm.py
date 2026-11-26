@@ -82,6 +82,7 @@ def main():
         default=None,
         help="Checkpoint'ten devam et ('auto' veya özel dosya yolu)",
     )
+    parser.add_argument("--device", type=str, default=None, help="Cihaz tercihi (cuda, auto, cpu, privateuseone)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -94,7 +95,10 @@ def main():
     )
     model_name = cfg.get("model", {}).get("name", "")
     cfg_path_str = str(args.config or "")
-    if model_name == "spike_transformer" or "spike_transformer" in cfg_path_str:
+    if model_name == "hybrid_lif_attn" or "hybrid" in cfg_path_str or "stage8" in cfg_path_str:
+        prefix = "stage8_hybrid_100m"
+        stage_title = "Aşama 8: 100M Hibrit LIF + Attention (Float QK, Spike V)"
+    elif model_name == "spike_transformer" or "spike_transformer" in cfg_path_str:
         prefix = "stage7_spike_transformer_10m"
         stage_title = "Aşama 7: 10M Spike Transformer (Spikformer/SpikeGPT)"
     elif (
@@ -124,7 +128,9 @@ def main():
     logger.info("==========================================")
 
     dev_cfg = cfg.get("device")
-    if isinstance(dev_cfg, dict):
+    if args.device:
+        prefer_device = args.device
+    elif isinstance(dev_cfg, dict):
         prefer_device = dev_cfg.get("prefer", "auto")
     elif isinstance(dev_cfg, str):
         prefer_device = dev_cfg
@@ -206,6 +212,7 @@ def main():
         train_bin = None
         for cand in [
             train_bin_cfg,
+            data_dir / "bpe_train_v3b.bin",
             data_dir / "bpe_train_v3.bin",
             data_dir / "bpe_train_v2.bin",
             data_dir / "bpe_train.bin",
@@ -233,6 +240,7 @@ def main():
         val_bin = None
         for cand in [
             val_bin_cfg,
+            data_dir / "bpe_val_v3b.bin",
             data_dir / "bpe_val_v3.bin",
             data_dir / "bpe_val_v2.bin",
             data_dir / "bpe_val.bin",
@@ -261,9 +269,10 @@ def main():
         train_bin = data_dir / "train.bin"
         val_bin = data_dir / "val.bin"
 
-    logger.info(f"Veri kümeleri yükleniyor: {train_bin.name} ve {val_bin.name}")
-    train_dataset = CharDataset(train_bin, block_size=block_size, stride=block_size)
-    val_dataset = CharDataset(val_bin, block_size=block_size, stride=block_size)
+    use_streaming = bool(cfg.get("data", {}).get("use_streaming", True))
+    logger.info(f"Veri kümeleri yükleniyor (streaming={use_streaming}): {train_bin.name} ve {val_bin.name}")
+    train_dataset = CharDataset(train_bin, block_size=block_size, stride=block_size, use_streaming=use_streaming)
+    val_dataset = CharDataset(val_bin, block_size=block_size, stride=block_size, use_streaming=use_streaming)
 
     train_loader = DataLoader(
         train_dataset,
@@ -291,7 +300,23 @@ def main():
     if getattr(device, "type", "") in ("tpu", "privateuseone", "cuda"):
         use_cython = False
 
-    if model_name == "spike_transformer":
+    if model_name == "hybrid_lif_attn":
+        from mergen.models.hybrid_lif_attn import HybridLIFTransformerLM
+        num_blocks = int(cfg.get("model", {}).get("num_blocks", 8))
+        num_heads = int(cfg.get("model", {}).get("num_heads", 8))
+        ffn_hidden = int(cfg.get("model", {}).get("ffn_hidden", 1024))
+        max_seq = int(cfg.get("model", {}).get("max_seq", block_size))
+        model = HybridLIFTransformerLM(
+            vocab_size=vocab_size,
+            embed_dim=embed_dim,
+            num_blocks=num_blocks,
+            num_heads=num_heads,
+            ffn_hidden=ffn_hidden,
+            max_seq=max_seq,
+            beta=beta,
+            threshold=threshold,
+        ).to(device)
+    elif model_name == "spike_transformer":
         from mergen.models.spike_transformer import SpikeTransformerLM
         num_blocks = int(cfg.get("model", {}).get("num_blocks", 4))
         num_heads = int(cfg.get("model", {}).get("num_heads", 4))
@@ -413,7 +438,8 @@ def main():
                 ckpt_data = torch.load(resume_target, map_location=map_loc, weights_only=False)
                 ckpt_embed = ckpt_data.get("embed_dim", embed_dim)
                 ckpt_hidden = ckpt_data.get("hidden_size", hidden_size)
-                if ckpt_embed != embed_dim or ckpt_hidden != hidden_size:
+                is_mismatch = (ckpt_embed != embed_dim) if model_name in ("spike_transformer", "hybrid_lif_attn") else (ckpt_embed != embed_dim or ckpt_hidden != hidden_size)
+                if is_mismatch:
                     logger.warning(
                         f"Checkpoint model boyutları uyuşmuyor ({ckpt_embed}x{ckpt_hidden} vs {embed_dim}x{hidden_size}). Sıfırdan başlanıyor."
                     )

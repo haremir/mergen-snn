@@ -15,9 +15,16 @@ from torch.utils.data import Dataset
 class CharDataset(Dataset):
     """Karakter ve BPE seviyesi dil modeli için sabit pencereli PyTorch veri kümesi."""
 
-    def __init__(self, bin_path: Union[str, Path], block_size: int = 32, stride: Optional[int] = None):
+    def __init__(
+        self,
+        bin_path: Union[str, Path],
+        block_size: int = 32,
+        stride: Optional[int] = None,
+        use_streaming: bool = True,
+    ):
         self.block_size = block_size
         self.stride = stride if stride is not None else block_size
+        self.use_streaming = use_streaming
         bin_path = Path(bin_path)
 
         # Dosyanın npy formatında mı yoksa ham uint16 binary (memmap) formatında mı olduğunu tespit et
@@ -27,9 +34,12 @@ class CharDataset(Dataset):
             if header == b"\x93NUMPY":
                 is_npy = True
 
-        if is_npy:
+        if is_npy and not use_streaming:
             self.data = np.load(bin_path).astype(np.int64)
             self._is_memmap = False
+        elif is_npy and use_streaming:
+            self.data = np.load(bin_path, mmap_mode="r")
+            self._is_memmap = True
         else:
             self.data = np.memmap(bin_path, dtype=np.uint16, mode="r")
             self._is_memmap = True
